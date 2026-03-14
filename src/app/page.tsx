@@ -152,12 +152,6 @@ export default function ChannelLobby() {
                       >
                         Open
                       </button>
-                      <button
-                        onClick={() => deleteChannel(ch.slug)}
-                        className="px-3 py-1.5 rounded text-xs bg-[var(--card-border)] hover:bg-[var(--error)]/20 hover:text-[var(--error)] transition-colors"
-                      >
-                        Delete
-                      </button>
                     </div>
                   </div>
                 ))}

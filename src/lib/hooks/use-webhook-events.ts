@@ -94,5 +94,5 @@ export function useWebhookEvents(channelSlug: string) {
     }
   }, [connect, fetchInitialData])
 
-  return { webhooks, state, connected }
+  return { webhooks, state, connected, refresh: fetchInitialData }
 }

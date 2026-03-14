@@ -7,16 +7,19 @@ import { EventStream } from '@/components/event-stream'
 import { EventInspector } from '@/components/event-inspector'
 import { ScenarioPanel } from '@/components/scenario-panel'
 import { BehaviorControlPanel } from '@/components/behavior-control-panel'
-import { ObservePanel } from '@/components/observe-panel'
 import { TestTriggerPanel } from '@/components/test-trigger-panel'
 import type { ReceivedWebhook } from '@/lib/webhook-state'
 
-type Tab = 'stream' | 'scenarios' | 'observe' | 'test'
+type Tab = 'stream' | 'scenarios' | 'test'
 
 export default function ChannelDashboard({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params)
-  const { webhooks, state, connected } = useWebhookEvents(slug)
+  const { webhooks, state, connected, refresh } = useWebhookEvents(slug)
   const [activeTab, setActiveTab] = useState<Tab>('stream')
+
+  useEffect(() => {
+    if (activeTab === 'stream') refresh()
+  }, [activeTab, refresh])
   const [selectedWebhook, setSelectedWebhook] = useState<ReceivedWebhook | null>(null)
   const [copied, setCopied] = useState(false)
   const [webhookUrl, setWebhookUrl] = useState('')
@@ -40,7 +43,6 @@ export default function ChannelDashboard({ params }: { params: Promise<{ slug: s
   const tabs: { id: Tab; label: string }[] = [
     { id: 'stream', label: 'Event Stream' },
     { id: 'scenarios', label: 'Scenarios' },
-    { id: 'observe', label: 'Observe' },
     { id: 'test', label: 'Test Trigger' },
   ]
 
@@ -108,21 +110,23 @@ export default function ChannelDashboard({ params }: { params: Promise<{ slug: s
         )}
 
         {activeTab === 'scenarios' && (
-          <div className="flex-1 overflow-auto p-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <ScenarioPanel activeScenario={state?.activeScenario || 'none'} channelSlug={slug} />
+          <div className="flex-1 overflow-auto p-6 max-w-5xl mx-auto w-full">
+            <BehaviorControlPanel channelSlug={slug} />
+
+            {/* Coming Soon — Scenarios */}
+            <div className="mt-8">
+              <div className="flex items-center gap-3 mb-4">
+                <h2 className="text-lg font-semibold text-[var(--muted)]">Test Scenarios</h2>
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/30">
+                  Coming Soon
+                </span>
               </div>
-              <div>
-                <BehaviorControlPanel channelSlug={slug} />
+              <div className="relative rounded-lg overflow-hidden">
+                <div className="pointer-events-none select-none opacity-40" style={{ filter: 'blur(1.5px)' }}>
+                  <ScenarioPanel activeScenario={state?.activeScenario || 'none'} channelSlug={slug} />
+                </div>
               </div>
             </div>
-          </div>
-        )}
-
-        {activeTab === 'observe' && (
-          <div className="flex-1 overflow-auto p-6">
-            <ObservePanel webhooks={webhooks} channelSlug={slug} />
           </div>
         )}
 
