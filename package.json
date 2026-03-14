@@ -6,15 +6,34 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:studio": "prisma studio",
+    "db:push": "prisma db push",
+    "db:pull": "prisma db pull",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:reset": "prisma migrate reset",
+    "db:seed": "prisma db seed",
+    "db:format": "prisma format",
+    "db:validate": "prisma validate",
+    "db:status": "prisma migrate status"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.5.0",
+    "@prisma/client": "^7.5.0",
+    "dotenv": "^17.3.1",
+    "jsonwebtoken": "^9.0.3",
     "next": "16.1.6",
+    "pg": "^8.20.0",
+    "prisma": "^7.5.0",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

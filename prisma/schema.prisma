@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Channel {
+  id               String    @id @default(uuid()) @db.Uuid
+  slug             String    @unique @db.VarChar(64)
+  name             String    @db.VarChar(128)
+  behavior         String    @default("success") @db.VarChar(32)
+  delayMs          Int       @default(0) @map("delay_ms")
+  customStatusCode Int       @default(200) @map("custom_status_code")
+  useSequence      Boolean   @default(false) @map("use_sequence")
+  sequence         Json      @default("[]")
+  sequenceIndex    Int       @default(0) @map("sequence_index")
+  publicKeyPem     String?   @map("public_key_pem") @db.Text
+  activeScenario   String?   @default("none") @map("active_scenario") @db.VarChar(64)
+  webhookCounter   Int       @default(0) @map("webhook_counter")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  webhooks         Webhook[]
+
+  @@map("channels")
+}
+
+model Webhook {
+  id                  String   @id @default(uuid()) @db.Uuid
+  channelId           String   @map("channel_id") @db.Uuid
+  index               Int
+  receivedAt          DateTime @map("received_at") @db.Timestamptz()
+  receivedAtMs        BigInt   @map("received_at_ms")
+  method              String   @db.VarChar(10)
+  path                String   @db.Text
+  headers             Json     @default("{}")
+  body                Json?
+  signatureHeader     String?  @map("signature_header") @db.Text
+  signatureValid      Boolean? @map("signature_valid")
+  signatureError      String?  @map("signature_error") @db.Text
+  signaturePayload    Json?    @map("signature_payload")
+  respondedStatusCode Int      @map("responded_status_code")
+  respondedBehavior   String   @map("responded_behavior") @db.VarChar(32)
+  respondedDelayMs    Int      @default(0) @map("responded_delay_ms")
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([channelId])
+  @@index([channelId, receivedAtMs])
+  @@map("webhooks")
+}

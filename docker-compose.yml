@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: webhook_tester
+      POSTGRES_USER: webhook
+      POSTGRES_PASSWORD: webhook_local
+    ports:
+      - '5433:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U webhook -d webhook_tester']
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
