@@ -4,7 +4,7 @@
 #
 # Usage:
 #   ./start.sh              # Dev mode (hot reload)
-#   ./start.sh prod         # Production (single Docker container for EC2)
+#   ./start.sh prod         # Production (single Docker container for server)
 #   ./start.sh --port 4200  # Custom port
 #
 # Stop: ./stop.sh or Ctrl+C
@@ -24,7 +24,7 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "  Usage:"
       echo "    ./start.sh              Dev (hot reload + DB in Docker)"
-      echo "    ./start.sh prod         Production (single container for EC2)"
+      echo "    ./start.sh prod         Production (single container for server)"
       echo "    ./start.sh --port 4200  Custom port"
       echo ""
       exit 0
@@ -87,7 +87,8 @@ fi
 
 # Migrations
 echo "  Running migrations..."
-DATABASE_URL="postgres://webhook:webhook_local@localhost:5433/webhook_tester" npx prisma db push --skip-generate 2>&1 | grep -v "^$" | sed 's/^/  /'
+source .env 2>/dev/null || true
+DATABASE_URL="${DATABASE_URL:-postgres://webhook:webhook_local@localhost:5433/webhook_tester}" npx prisma db push --skip-generate 2>&1 | grep -v "^$" | sed 's/^/  /'
 
 # Kill existing
 EXISTING=$(lsof -ti:$PORT 2>/dev/null || true)
@@ -100,4 +101,4 @@ echo "  http://localhost:$PORT"
 echo "  Webhook URL: http://localhost:$PORT/api/webhook/{slug}"
 echo ""
 
-DATABASE_URL="postgres://webhook:webhook_local@localhost:5433/webhook_tester" PORT=$PORT npx next dev -p "$PORT"
+DATABASE_URL="${DATABASE_URL:-postgres://webhook:webhook_local@localhost:5433/webhook_tester}" PORT=$PORT npx next dev -p "$PORT"

@@ -3,8 +3,8 @@ set -e
 
 PGDATA="/var/lib/postgresql/data"
 DB_NAME="webhook_tester"
-DB_USER="webhook"
-DB_PASS="webhook_local"
+DB_USER="${DB_USER:-webhook}"
+DB_PASS="${DB_PASS:-webhook_local}"
 
 # ── 1. Initialize PostgreSQL if needed ───────────────────────
 if [ ! -f "$PGDATA/PG_VERSION" ]; then

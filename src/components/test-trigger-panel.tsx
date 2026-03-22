@@ -5,62 +5,60 @@ import { useState, useEffect } from 'react'
 type WebhookEventDef = {
   value: string
   label: string
-  category: 'application' | 'tenancy' | 'test'
+  category: 'order' | 'payment' | 'test'
   payload: object
   context: Record<string, string>
 }
 
 const webhookEvents: WebhookEventDef[] = [
-  // Application lifecycle
-  { value: 'application.qualified', label: 'Qualified', category: 'application', payload: { annualRentalPower: 144000 }, context: { applicationId: 'test-app-001' } },
-  { value: 'application.approved', label: 'Approved', category: 'application', payload: {}, context: { applicationId: 'test-app-001' } },
-  { value: 'application.rejected', label: 'Rejected', category: 'application', payload: { reason: { code: 'INSUFFICIENT_INCOME', message: 'Insufficient income documentation' } }, context: { applicationId: 'test-app-001' } },
-  { value: 'application.change_requested', label: 'Change Requested', category: 'application', payload: { requestedDocuments: [{ action: 'reupload', documentType: 'general', reason: 'Please re-upload the tenancy contract with valid signatures' }] }, context: { applicationId: 'test-app-001' } },
-  { value: 'application.withdrawn', label: 'Withdrawn', category: 'application', payload: { previousStatus: 'document_submitted', reason: 'Tenant chose a different property' }, context: { applicationId: 'test-app-001' } },
-  { value: 'application.documents_submitted', label: 'Documents Submitted', category: 'application', payload: {}, context: { applicationId: 'test-app-001' } },
+  // Order lifecycle
+  { value: 'order.created', label: 'Created', category: 'order', payload: { orderId: 'f47ac10b-58cc-4372-a567-0e02b2c3d479', totalAmount: 14999, currency: 'USD' }, context: { orderId: 'test-order-001' } },
+  { value: 'order.confirmed', label: 'Confirmed', category: 'order', payload: {}, context: { orderId: 'test-order-001' } },
+  { value: 'order.cancelled', label: 'Cancelled', category: 'order', payload: { reason: { code: 'CUSTOMER_REQUEST', message: 'Customer requested cancellation' } }, context: { orderId: 'test-order-001' } },
+  { value: 'order.updated', label: 'Updated', category: 'order', payload: { changes: [{ field: 'shipping_address', reason: 'Customer updated their delivery address' }] }, context: { orderId: 'test-order-001' } },
+  { value: 'order.refunded', label: 'Refunded', category: 'order', payload: { previousStatus: 'confirmed', reason: 'Item out of stock' }, context: { orderId: 'test-order-001' } },
+  { value: 'order.fulfilled', label: 'Fulfilled', category: 'order', payload: { trackingNumber: '1Z999AA10123456784', carrier: 'UPS' }, context: { orderId: 'test-order-001' } },
 
-  // Tenancy signing lifecycle
-  { value: 'tenancy.in_signing', label: 'In Signing', category: 'tenancy', payload: { tenancyId: 'a0B7Q000001XXXXYY' }, context: { tenancyId: 'test-tenancy-001' } },
-  { value: 'tenancy.rent_confirmed', label: 'Rent Confirmed', category: 'tenancy', payload: { tenancyId: 'a0B7Q000001XXXXYY' }, context: { tenancyId: 'test-tenancy-001' } },
-  { value: 'tenancy.payment_plan_confirmed', label: 'Payment Plan Confirmed', category: 'tenancy', payload: { tenancyId: 'a0B7Q000001XXXXYY' }, context: { tenancyId: 'test-tenancy-001' } },
-  { value: 'tenancy.tpma_tenant_signed', label: 'Tenant Signed', category: 'tenancy', payload: { tenancyId: 'a0B7Q000001XXXXYY' }, context: { tenancyId: 'test-tenancy-001' } },
-  { value: 'tenancy.tpma_tenant_declined', label: 'Tenant Declined', category: 'tenancy', payload: { tenancyId: 'a0B7Q000001XXXXYY' }, context: { tenancyId: 'test-tenancy-001' } },
-  { value: 'tenancy.tpma_keyper_signed', label: 'Keyper Signed', category: 'tenancy', payload: { tenancyId: 'a0B7Q000001XXXXYY' }, context: { tenancyId: 'test-tenancy-001' } },
-  { value: 'tenancy.tpma_keyper_declined', label: 'Keyper Declined', category: 'tenancy', payload: { tenancyId: 'a0B7Q000001XXXXYY' }, context: { tenancyId: 'test-tenancy-001' } },
-  { value: 'tenancy.published', label: 'Published', category: 'tenancy', payload: {
-    tenancyId: 'a0B7Q000001XXXXYY',
-    firstPayments: [
-      { id: 'a0C7Q000001XXXXYY', type: 'RENT_RNPL', amount: 12000, from: 'tenant', to: 'keyper', status: 'Paid' },
-      { id: 'a0C7Q000001XXXXYZ', type: 'RENT', amount: 5000, from: 'keyper', to: 'landlord', status: 'Pending' },
+  // Payment lifecycle
+  { value: 'payment.completed', label: 'Completed', category: 'payment', payload: { paymentId: 'c9bf9e57-1685-4c89-bafb-ff5af830be8a' }, context: { paymentId: 'test-payment-001' } },
+  { value: 'payment.failed', label: 'Failed', category: 'payment', payload: { paymentId: 'c9bf9e57-1685-4c89-bafb-ff5af830be8a', errorCode: 'CARD_DECLINED' }, context: { paymentId: 'test-payment-001' } },
+  { value: 'payment.refunded', label: 'Refunded', category: 'payment', payload: { paymentId: 'c9bf9e57-1685-4c89-bafb-ff5af830be8a', refundAmount: 4999 }, context: { paymentId: 'test-payment-001' } },
+  { value: 'invoice.paid', label: 'Invoice Paid', category: 'payment', payload: { invoiceId: 'e4d909c2-90d0-4b05-9c59-f5b21bde4e50', amount: 9900, currency: 'USD' }, context: { invoiceId: 'test-invoice-001' } },
+  { value: 'invoice.overdue', label: 'Invoice Overdue', category: 'payment', payload: { invoiceId: 'e4d909c2-90d0-4b05-9c59-f5b21bde4e50', dueDate: '2025-01-15', daysOverdue: 7 }, context: { invoiceId: 'test-invoice-001' } },
+  { value: 'subscription.renewed', label: 'Subscription Renewed', category: 'payment', payload: {
+    subscriptionId: 'b2d8f636-28a2-4b6e-bc6e-31f58c27a9b3',
+    plan: 'pro',
+    billingPeriod: 'monthly',
+    nextBillingDate: '2025-03-01T00:00:00.000Z',
+    lineItems: [
+      { id: '7c9e6679-7425-40de-944b-e07fc1f90ae7', type: 'SUBSCRIPTION_FEE', amount: 4900, description: 'Pro plan - monthly', status: 'Paid' },
+      { id: 'aab3238e-e612-4e3a-b2e5-7c5e2b0c93f1', type: 'PLATFORM_FEE', amount: 500, description: 'Platform usage fee', status: 'Paid' },
     ],
-    payments: [
-      { id: 'a0C7Q000001XXXXZZ', type: 'RENT_RNPL', amount: 5000, from: 'tenant', to: 'keyper', status: 'Pending' },
-    ],
-  }, context: { tenancyId: 'test-tenancy-001' } },
+  }, context: { subscriptionId: 'test-sub-001' } },
 
-  // Tenancy payment lifecycle
-  { value: 'tenancy.tpma_first_payment_attempt', label: 'First Payment Attempt', category: 'tenancy', payload: {
-    tenancyId: 'a0B7Q000001XXXXYY',
+  // Payment attempt details
+  { value: 'payment.initial_attempt', label: 'Initial Attempt', category: 'payment', payload: {
+    orderId: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
     totalAmount: 15000,
     status: 'succeeded',
     successfulPayments: [
-      { paymentId: 'a0C7Q000001XXXXYY', amount: 12000, paymentType: 'RENT_RNPL', clearedAt: '2024-06-15T10:30:00.000Z' },
-      { paymentId: 'a0C7Q000001XXXXYZ', amount: 3000, paymentType: 'DIGITAL_MANAGEMENT_FEE', clearedAt: '2024-06-15T10:30:00.000Z' },
+      { paymentId: '7c9e6679-7425-40de-944b-e07fc1f90ae7', amount: 12000, paymentType: 'ORDER_PAYMENT', clearedAt: '2025-01-15T10:30:00.000Z' },
+      { paymentId: 'aab3238e-e612-4e3a-b2e5-7c5e2b0c93f1', amount: 3000, paymentType: 'SERVICE_FEE', clearedAt: '2025-01-15T10:30:00.000Z' },
     ],
     failedPayments: [],
-  }, context: { tenancyId: 'test-tenancy-001', paymentId: 'test-payment-001' } },
-  { value: 'tenancy.payment_attempt', label: 'Payment Attempt', category: 'tenancy', payload: {
-    tenancyId: 'a0B7Q000001XXXXYY',
+  }, context: { orderId: 'test-order-001', paymentId: 'test-payment-001' } },
+  { value: 'payment.retry_attempt', label: 'Retry Attempt', category: 'payment', payload: {
+    orderId: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
     totalAmount: 5000,
     status: 'succeeded',
-    type: 'user',
+    type: 'retry',
     payments: [
-      { paymentId: 'a0C7Q000001XXXXYY', amount: 5000, paymentType: 'RENT_RNPL', from: 'tenant', to: 'keyper', status: 'succeeded', clearedAt: '2024-07-01T09:00:00.000Z' },
+      { paymentId: '7c9e6679-7425-40de-944b-e07fc1f90ae7', amount: 5000, paymentType: 'ORDER_PAYMENT', from: 'customer', to: 'merchant', status: 'succeeded', clearedAt: '2025-02-01T09:00:00.000Z' },
     ],
-  }, context: { tenancyId: 'test-tenancy-001', paymentId: 'test-payment-001' } },
+  }, context: { orderId: 'test-order-001', paymentId: 'test-payment-001' } },
 
   // Test
-  { value: 'test.ping', label: 'Test Ping', category: 'test', payload: { message: 'This is a test webhook from Keyper' }, context: {} },
+  { value: 'test.ping', label: 'Test Ping', category: 'test', payload: { message: 'This is a test webhook event' }, context: {} },
 ]
 
 const DEFAULT_EVENT_INDEX = Math.max(0, webhookEvents.findIndex(e => e.value === 'test.ping'))
@@ -183,9 +181,9 @@ export function TestTriggerPanel({ channelSlug }: { channelSlug: string }) {
         {/* Event type */}
         <div>
           <label className="text-xs text-[var(--muted)] mb-1.5 block">Event Type</label>
-          {(['application', 'tenancy', 'test'] as const).map(category => {
+          {(['order', 'payment', 'test'] as const).map(category => {
             const categoryEvents = webhookEvents.filter(e => e.category === category)
-            const categoryLabel = { application: 'Application', tenancy: 'Tenancy', test: 'Test' }[category]
+            const categoryLabel = { order: 'Order', payment: 'Payment', test: 'Test' }[category]
             return (
               <div key={category} className="mb-3">
                 <div className="text-[10px] font-semibold text-[var(--muted)] uppercase tracking-wider mb-1.5">{categoryLabel}</div>
