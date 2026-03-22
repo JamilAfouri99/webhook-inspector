@@ -5,8 +5,8 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Webhook Tester — Keyper',
-  description: 'QA tool for testing the full webhook delivery lifecycle',
+  title: 'Webhook Tester',
+  description: 'A developer tool for testing webhook delivery, retry logic, and failure scenarios',
 }
 
 export const viewport: Viewport = {

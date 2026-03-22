@@ -47,6 +47,6 @@ RUN chmod +x /docker-entrypoint.sh
 EXPOSE 4100
 ENV PORT=4100
 ENV HOSTNAME="0.0.0.0"
-ENV DATABASE_URL="postgres://webhook:webhook_local@localhost:5432/webhook_tester"
+ENV DATABASE_URL=${DATABASE_URL:-postgres://webhook:webhook_local@localhost:5432/webhook_tester}
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
