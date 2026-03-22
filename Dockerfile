@@ -1,5 +1,5 @@
 # ── Stage 1: Build Next.js standalone ─────────────────────────
-FROM node:20-alpine AS builder
+FROM node:25-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -9,7 +9,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # ── Stage 2: Production image with PostgreSQL + Node.js ──────
-FROM node:20-alpine AS runner
+FROM node:25-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
