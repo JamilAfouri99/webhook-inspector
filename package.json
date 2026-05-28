@@ -5,11 +5,16 @@
   "engines": {
     "node": ">=20.0.0"
   },
+  "bin": {
+    "webhook-tester": "./bin/webhook-tester.mjs"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:studio": "prisma studio",
     "db:push": "prisma db push",
     "db:pull": "prisma db pull",
@@ -32,6 +37,7 @@
     "prisma": "^7.5.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-resizable-panels": "^4.11.2",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
@@ -43,6 +49,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.7"
   }
 }

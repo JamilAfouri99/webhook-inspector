@@ -4,11 +4,42 @@ import {
   resolveCurrentBehavior,
   recordWebhook,
   getPublicKey,
-  getLargeResponseData,
   getChannel,
-  behaviorToStatusCode,
+  getForwardConfig,
 } from '@/lib/webhook-state'
-import type { ServerBehavior } from '@/lib/webhook-state'
+import { getBehavior } from '@/domain/behaviors'
+import type { ResponseResult } from '@/domain/behavior'
+
+const FORWARD_HOP_BY_HOP = new Set([
+  'host', 'connection', 'content-length', 'keep-alive',
+  'transfer-encoding', 'upgrade', 'proxy-connection', 'te', 'trailer',
+])
+
+function fireForward(slug: string, headers: Record<string, string | string[] | undefined>, body: unknown) {
+  getForwardConfig(slug)
+    .then(async (cfg) => {
+      if (!cfg || !cfg.enabled) return
+      const forwardHeaders: Record<string, string> = {}
+      for (const [key, value] of Object.entries(headers)) {
+        if (FORWARD_HOP_BY_HOP.has(key.toLowerCase())) continue
+        if (Array.isArray(value)) forwardHeaders[key] = value.join(', ')
+        else if (typeof value === 'string') forwardHeaders[key] = value
+      }
+      forwardHeaders['X-Webhook-Tester-Forwarded'] = slug
+      if (!forwardHeaders['content-type']) forwardHeaders['content-type'] = 'application/json'
+      try {
+        await fetch(cfg.url, {
+          method: 'POST',
+          headers: forwardHeaders,
+          body: body == null ? undefined : JSON.stringify(body),
+          redirect: 'manual',
+        })
+      } catch {
+        // forwarding is fire-and-forget; failures don't affect the original response
+      }
+    })
+    .catch(() => {})
+}
 
 export const maxDuration = 60
 
@@ -24,9 +55,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!resolved) {
     return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
   }
-  const { b, delay, status } = resolved
 
-  let body: any = null
+  let body: unknown = null
   try {
     body = await request.json()
   } catch {
@@ -40,7 +70,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   let signatureValid: boolean | undefined
   let signatureError: string | undefined
-  let signaturePayload: any
+  let signaturePayload: unknown
   const sigHeader = request.headers.get('x-webhook-signature')
   const publicKey = await getPublicKey(slug)
 
@@ -54,7 +84,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
   }
 
-  const statusCode = b === 'timeout' ? 0 : status
+  const behavior = getBehavior(resolved.b)
+  const spec = behavior.respond({
+    requestBody: body,
+    delayMs: resolved.delay,
+    statusCodeOverride: resolved.status,
+  })
 
   await recordWebhook(slug, {
     receivedAt: new Date().toISOString(),
@@ -68,64 +103,33 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     signatureError,
     signaturePayload,
     respondedWith: {
-      statusCode,
-      behavior: b,
-      delayMs: delay,
+      statusCode: resolved.status,
+      behavior: resolved.b,
+      delayMs: resolved.delay,
     },
   })
 
-  // Handle delay (for slow responses)
-  if (delay > 0 && b !== 'timeout') {
-    await new Promise(resolve => setTimeout(resolve, delay))
+  fireForward(slug, headers, body)
+
+  if (spec.delayMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, spec.delayMs))
   }
 
-  // Timeout — hang until caller's timeout kicks in
-  if (b === 'timeout') {
-    const timeoutDelay = delay || 35000
-    await new Promise(resolve => setTimeout(resolve, timeoutDelay))
-    return new NextResponse(null, { status: 504 })
-  }
+  return buildResponse(spec.result)
+}
 
-  // Special response behaviors
-  switch (b) {
-    case 'redirect':
-      return NextResponse.redirect('https://example.com/redirected', 302)
-
-    case 'large-response':
-      return NextResponse.json(
-        { received: true, data: getLargeResponseData() },
-        { status: 200 }
-      )
-
-    case 'large-body': {
-      const bigBody = 'a'.repeat(10000)
-      return NextResponse.json(
-        { received: true, data: bigBody, eventId: body?.eventId },
-        { status: 200 }
-      )
-    }
-
-    case 'empty-response':
-      return new NextResponse(null, { status: 200 })
-
-    case 'non-json-response':
-      return new NextResponse('OK - not json', {
-        status: 200,
-        headers: { 'Content-Type': 'text/plain' },
+function buildResponse(result: ResponseResult): NextResponse {
+  switch (result.kind) {
+    case 'json':
+      return NextResponse.json(result.body, { status: result.status })
+    case 'text':
+      return new NextResponse(result.body, {
+        status: result.status,
+        headers: { 'Content-Type': result.contentType },
       })
+    case 'redirect':
+      return NextResponse.redirect(result.to, result.status)
+    case 'empty':
+      return new NextResponse(null, { status: result.status })
   }
-
-  // Standard JSON responses
-  const bodies: Record<string, any> = {
-    'success': { received: true, eventId: body?.eventId },
-    'server-error': { error: 'Internal Server Error' },
-    'slow': { received: true, delayed: true, eventId: body?.eventId },
-    'client-error': { error: 'Bad Request' },
-    'unauthorized': { error: 'Unauthorized' },
-    'not-found': { error: 'Not Found' },
-    'rate-limited': { error: 'Too Many Requests', retryAfter: 60 },
-    'custom': { status: status },
-  }
-
-  return NextResponse.json(bodies[b] || { received: true }, { status: statusCode || 200 })
 }

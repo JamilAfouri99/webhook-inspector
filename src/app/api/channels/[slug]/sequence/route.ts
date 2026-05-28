@@ -16,14 +16,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
   }
 
-  let body: { steps?: unknown }
+  let body: { steps?: unknown; name?: unknown }
   try {
     body = await request.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { steps } = body
+  const { steps, name } = body
+  const presetName = typeof name === 'string' && name.length > 0 ? name : undefined
 
   if (!steps || !Array.isArray(steps) || steps.length === 0) {
     return NextResponse.json(
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
   }
 
-  await setSequence(slug, steps as SequenceStep[])
+  await setSequence(slug, steps as SequenceStep[], presetName)
 
   const updated = await getState(slug)
   return NextResponse.json(updated)

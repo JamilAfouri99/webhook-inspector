@@ -18,6 +18,8 @@ model Channel {
   sequenceIndex    Int       @default(0) @map("sequence_index")
   publicKeyPem     String?   @map("public_key_pem") @db.Text
   activeScenario   String?   @default("none") @map("active_scenario") @db.VarChar(64)
+  forwardUrl       String?   @map("forward_url") @db.Text
+  forwardEnabled   Boolean   @default(false) @map("forward_enabled")
   webhookCounter   Int       @default(0) @map("webhook_counter")
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()

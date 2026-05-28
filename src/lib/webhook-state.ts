@@ -1,24 +1,11 @@
 import { prisma } from './db'
+import { getBehavior, type BehaviorName } from '@/domain/behaviors'
 
 // ============================================================
 // Types
 // ============================================================
 
-export type ServerBehavior =
-  | 'success'
-  | 'server-error'
-  | 'timeout'
-  | 'slow'
-  | 'client-error'
-  | 'unauthorized'
-  | 'not-found'
-  | 'rate-limited'
-  | 'redirect'
-  | 'large-response'
-  | 'large-body'
-  | 'empty-response'
-  | 'non-json-response'
-  | 'custom'
+export type ServerBehavior = BehaviorName
 
 export type SequenceStep = {
   behavior: ServerBehavior
@@ -62,24 +49,11 @@ export type ChannelState = {
   useSequence: boolean
   publicKeyPem: string | null
   activeScenario: string
+  forwardUrl: string | null
+  forwardEnabled: boolean
   webhooksReceived: number
   signatureVerification: boolean
   channel: { slug: string; name: string }
-}
-
-export type ScenarioConfig = {
-  behavior: ServerBehavior
-  delayMs: number
-  useSequence: boolean
-  sequence: SequenceStep[]
-}
-
-export type Scenario = {
-  name: string
-  description: string
-  whatToExpect: string
-  category: 'basic' | 'retry' | 'circuit-breaker' | 'edge-case' | 'verification'
-  config: ScenarioConfig
 }
 
 export type DeliveryAnalysis = {
@@ -132,31 +106,10 @@ function emit(slug: string, event: string, data: any) {
 // Shared Constants
 // ============================================================
 
-const largeResponseData = 'x'.repeat(1.5 * 1024 * 1024)
 const startedAt = Date.now()
 
-export function getLargeResponseData() {
-  return largeResponseData
-}
-
 export function behaviorToStatusCode(b: ServerBehavior): number {
-  const map: Record<ServerBehavior, number> = {
-    'success': 200,
-    'server-error': 500,
-    'timeout': 0,
-    'slow': 200,
-    'client-error': 400,
-    'unauthorized': 401,
-    'not-found': 404,
-    'rate-limited': 429,
-    'redirect': 302,
-    'large-response': 200,
-    'large-body': 200,
-    'empty-response': 200,
-    'non-json-response': 200,
-    'custom': 200,
-  }
-  return map[b] ?? 200
+  return getBehavior(b).defaultStatusCode
 }
 
 // ============================================================
@@ -230,10 +183,30 @@ export async function getState(slug: string): Promise<ChannelState | null> {
     useSequence: useSeq,
     publicKeyPem: ch.publicKeyPem,
     activeScenario: ch.activeScenario || 'none',
+    forwardUrl: ch.forwardUrl ?? null,
+    forwardEnabled: ch.forwardEnabled,
     webhooksReceived: ch._count.webhooks,
     signatureVerification: !!ch.publicKeyPem,
     channel: { slug: ch.slug, name: ch.name },
   }
+}
+
+export async function getForwardConfig(slug: string): Promise<{ url: string; enabled: boolean } | null> {
+  const ch = await prisma.channel.findUnique({
+    where: { slug },
+    select: { forwardUrl: true, forwardEnabled: true },
+  })
+  if (!ch || !ch.forwardUrl) return null
+  return { url: ch.forwardUrl, enabled: ch.forwardEnabled }
+}
+
+export async function setForwardConfig(slug: string, url: string | null, enabled: boolean) {
+  await prisma.channel.update({
+    where: { slug },
+    data: { forwardUrl: url, forwardEnabled: url ? enabled : false },
+  })
+  const state = await getState(slug)
+  if (state) emit(slug, 'state-change', state)
 }
 
 export async function getPublicKey(slug: string): Promise<string | null> {
@@ -441,14 +414,14 @@ export async function setBehavior(slug: string, newBehavior: ServerBehavior, new
   if (state) emit(slug, 'state-change', state)
 }
 
-export async function setSequence(slug: string, steps: SequenceStep[]) {
+export async function setSequence(slug: string, steps: SequenceStep[], presetName?: string) {
   await prisma.channel.update({
     where: { slug },
     data: {
       useSequence: true,
       sequence: steps as any,
       sequenceIndex: 0,
-      activeScenario: 'manual:sequence',
+      activeScenario: presetName ?? 'manual:sequence',
     },
   })
   const state = await getState(slug)
@@ -462,40 +435,6 @@ export async function setPublicKeyForChannel(slug: string, key: string) {
   })
   const state = await getState(slug)
   if (state) emit(slug, 'state-change', state)
-}
-
-export async function activateScenarioByName(slug: string, name: string): Promise<boolean> {
-  const scenario = scenarios.find(s => s.name === name)
-  if (!scenario) return false
-
-  const ch = await prisma.channel.findUnique({ where: { slug }, select: { id: true } })
-  if (!ch) return false
-
-  const cfg = scenario.config
-
-  // Reset + apply scenario config
-  await prisma.channel.update({
-    where: { slug },
-    data: {
-      behavior: cfg.behavior,
-      delayMs: cfg.delayMs,
-      customStatusCode: behaviorToStatusCode(cfg.behavior),
-      useSequence: cfg.useSequence,
-      sequence: cfg.sequence as any,
-      sequenceIndex: 0,
-      publicKeyPem: null,
-      activeScenario: name,
-      webhookCounter: 0,
-    },
-  })
-
-  // Clear history
-  await prisma.webhook.deleteMany({ where: { channelId: ch.id } })
-
-  emit(slug, 'reset', null)
-  const state = await getState(slug)
-  if (state) emit(slug, 'state-change', state)
-  return true
 }
 
 export async function resetAll(slug: string) {
@@ -594,171 +533,3 @@ export function analyzeDeliveries(
 export function getUptimeMs(): number {
   return Date.now() - startedAt
 }
-
-// ============================================================
-// Scenarios (static definitions — config objects, no side effects)
-// ============================================================
-
-export const scenarios: Scenario[] = [
-  {
-    name: 'happy-path',
-    description: 'All requests return 200 OK',
-    whatToExpect: 'Every webhook should be delivered once and marked as "delivered". No retries.',
-    category: 'basic',
-    config: { behavior: 'success', delayMs: 0, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'retry-then-recover',
-    description: 'Returns 500, switch to 200 manually to test recovery.',
-    whatToExpect: 'Step 1: Trigger a webhook event (fails). Step 2: Wait ~60s for retry attempt 2 (also fails). Step 3: Before attempt 3 (~300s after attempt 2), switch behavior to "success". Step 4: Attempt 3 succeeds. Observe: 3 attempts for the same eventId with gaps of ~60s and ~300s.',
-    category: 'retry',
-    config: { behavior: 'server-error', delayMs: 0, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'retry-exhaust',
-    description: 'Always returns 500 Internal Server Error',
-    whatToExpect: 'All 3 attempts fail. Delivery marked "failed" after exhausting retries. Expect ~60s between attempt 1→2, ~300s between attempt 2→3.',
-    category: 'retry',
-    config: { behavior: 'server-error', delayMs: 0, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'circuit-breaker-trip',
-    description: 'Always 500. Send 5+ events to trip the circuit breaker.',
-    whatToExpect: 'Send 5 different webhook events. Each gets 3 attempts (15 total hits). After 5th delivery fully fails → circuit opens. 6th event gets "circuit_blocked" status. Takes ~6 minutes for all retries to complete.',
-    category: 'circuit-breaker',
-    config: { behavior: 'server-error', delayMs: 0, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'circuit-breaker-recover',
-    description: 'Trip circuit with 500s, then switch to 200 for recovery.',
-    whatToExpect: 'Step 1: Send 5+ events (all fail, circuit opens ~6min). Step 2: Switch to "success". Step 3: Wait 5min cooldown. System sends probe → succeeds → circuit closes. Up to 10 blocked deliveries re-queued.',
-    category: 'circuit-breaker',
-    config: { behavior: 'server-error', delayMs: 0, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'intermittent-failures',
-    description: 'Alternating 500, 200, 500, 200...',
-    whatToExpect: 'Circuit should NOT trip because success resets consecutiveFailures to 0.',
-    category: 'circuit-breaker',
-    config: { behavior: 'success', delayMs: 0, useSequence: true, sequence: [{ behavior: 'server-error' }, { behavior: 'success' }] },
-  },
-  {
-    name: 'timeout',
-    description: 'Server never responds (35s hang)',
-    whatToExpect: 'Worker should timeout at 30s. Delivery recorded as failed with timeout error. Triggers retries.',
-    category: 'edge-case',
-    config: { behavior: 'timeout', delayMs: 35000, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'slow-response',
-    description: '10 second delay then 200 OK',
-    whatToExpect: 'Delivery succeeds but takes 10s. Should be marked "delivered". Response time ~10s.',
-    category: 'edge-case',
-    config: { behavior: 'slow', delayMs: 10000, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'slow-near-timeout',
-    description: '25 second delay then 200 OK — just under 30s limit',
-    whatToExpect: 'Should barely succeed. If system has overhead, might timeout. Good edge case test.',
-    category: 'edge-case',
-    config: { behavior: 'slow', delayMs: 25000, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'client-error-no-retry',
-    description: 'Always returns 400 Bad Request',
-    whatToExpect: '4xx errors are NOT retried. Single attempt, delivery marked "failed". Circuit breaker NOT affected.',
-    category: 'basic',
-    config: { behavior: 'client-error', delayMs: 0, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'unauthorized',
-    description: 'Always returns 401 Unauthorized',
-    whatToExpect: 'Same as client-error: no retries, immediate failure.',
-    category: 'basic',
-    config: { behavior: 'unauthorized', delayMs: 0, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'rate-limited',
-    description: 'Always returns 429 Too Many Requests',
-    whatToExpect: '429 is a 4xx so no retries. Delivery fails immediately.',
-    category: 'basic',
-    config: { behavior: 'rate-limited', delayMs: 0, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'mixed-errors',
-    description: 'Cycles: 500, 400, 200, 500, 400, 200...',
-    whatToExpect: '500 triggers retry. 400 does not retry. 200 succeeds. Different eventIds hit different parts of the cycle.',
-    category: 'retry',
-    config: { behavior: 'success', delayMs: 0, useSequence: true, sequence: [{ behavior: 'server-error' }, { behavior: 'client-error' }, { behavior: 'success' }] },
-  },
-  {
-    name: 'signature-verify',
-    description: 'Returns 200 but logs signature validation status',
-    whatToExpect: 'Every webhook accepted. Shows whether X-Webhook-Signature JWT was valid. Set public key first.',
-    category: 'verification',
-    config: { behavior: 'success', delayMs: 0, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'redirect-blocked',
-    description: 'Returns 302 redirect — worker has maxRedirects=0, should reject.',
-    whatToExpect: 'Worker blocks redirects. Treated as server error → retried 3 times → fails. Circuit breaker IS affected.',
-    category: 'edge-case',
-    config: { behavior: 'redirect', delayMs: 0, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'large-response',
-    description: 'Returns 1.5MB response — exceeds worker maxContentLength (1MB).',
-    whatToExpect: 'Axios throws when response exceeds 1MB. Treated as server error → retried 3 times. Circuit IS affected.',
-    category: 'edge-case',
-    config: { behavior: 'large-response', delayMs: 0, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'response-truncation',
-    description: 'Returns 200 with >4KB body — stored truncated in DB.',
-    whatToExpect: 'Delivery succeeds. responseBody in DB truncated to 4KB (MAX_RESPONSE_BODY_LENGTH=4096).',
-    category: 'edge-case',
-    config: { behavior: 'large-body', delayMs: 0, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'empty-response',
-    description: 'Returns 200 with no body.',
-    whatToExpect: 'Delivery succeeds. responseBody in DB should be empty/undefined.',
-    category: 'edge-case',
-    config: { behavior: 'empty-response', delayMs: 0, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'non-json-response',
-    description: 'Returns 200 with Content-Type: text/plain instead of JSON.',
-    whatToExpect: 'Delivery succeeds. responseBody stored as plain string.',
-    category: 'edge-case',
-    config: { behavior: 'non-json-response', delayMs: 0, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'probe-fails-circuit-reopens',
-    description: 'Always 500 — for testing half-open probe failure.',
-    whatToExpect: 'Use AFTER circuit is open and cooldown passed. Probe returns 500 → circuit resets to "open".',
-    category: 'circuit-breaker',
-    config: { behavior: 'server-error', delayMs: 0, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'four-failures-no-circuit-trip',
-    description: 'Always 500 but send only 4 events. Circuit should NOT open.',
-    whatToExpect: 'Send 4 events (all fail). consecutiveFailures=4, threshold=5. Circuit stays closed.',
-    category: 'circuit-breaker',
-    config: { behavior: 'server-error', delayMs: 0, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'client-error-no-circuit-impact',
-    description: 'Always 400. Circuit should NEVER open.',
-    whatToExpect: '4xx errors do NOT affect circuit. consecutiveFailures stays at 0.',
-    category: 'circuit-breaker',
-    config: { behavior: 'client-error', delayMs: 0, useSequence: false, sequence: [] },
-  },
-  {
-    name: 'retry-timing-verify',
-    description: 'Always 500 — verify exact retry timing.',
-    whatToExpect: 'Send 1 event. Expect: Attempt 1 → ~60s → Attempt 2 → ~300s → Attempt 3. Total ~6 minutes.',
-    category: 'retry',
-    config: { behavior: 'server-error', delayMs: 0, useSequence: false, sequence: [] },
-  },
-]

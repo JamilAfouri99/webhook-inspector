@@ -1,165 +1,169 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { WorkspaceHeader } from '@/components/workspace-header'
+import { StatsStrip } from '@/components/stats-strip'
+import { ChannelCard } from '@/components/channel-card'
+import { ActivityFeed } from '@/components/activity-feed'
+import { WorkspaceEmptyState } from '@/components/empty-state'
+import { CommandPalette, type Command } from '@/components/command-palette'
+import { useHotkeys } from '@/lib/hooks/use-hotkeys'
 
-type Channel = {
-  id: string
-  slug: string
-  name: string
-  createdAt: string
-}
+type Channel = { id: string; slug: string; name: string; createdAt: string }
 
-export default function ChannelLobby() {
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$|^[a-z0-9]{3}$/
+
+export default function Lobby() {
   const router = useRouter()
-  const [channels, setChannels] = useState<Channel[]>([])
-  const [loading, setLoading] = useState(true)
+  const [channels, setChannels] = useState<Channel[] | null>(null)
   const [slug, setSlug] = useState('')
   const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [paletteOpen, setPaletteOpen] = useState(false)
 
-  async function fetchChannels() {
-    try {
-      const res = await fetch('/api/channels')
-      const data = await res.json()
-      setChannels(data.channels || [])
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false)
-    }
-  }
+  const fetchChannels = useCallback(() => {
+    fetch('/api/channels').then(r => r.json()).then(d => setChannels(d.channels || [])).catch(() => setChannels([]))
+  }, [])
 
-  useEffect(() => { fetchChannels() }, [])
+  useEffect(() => { fetchChannels() }, [fetchChannels])
+
+  useHotkeys({
+    'meta+k': (e) => { e.preventDefault(); setPaletteOpen(true) },
+    'ctrl+k': (e) => { e.preventDefault(); setPaletteOpen(true) },
+  })
 
   async function createChannel(e: React.FormEvent) {
     e.preventDefault()
-    if (!slug.trim()) return
+    const s = slug.trim().toLowerCase()
+    if (!SLUG_RE.test(s)) return
     setCreating(true)
-    setError(null)
+    setCreateError(null)
     try {
       const res = await fetch('/api/channels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug: slug.trim().toLowerCase(), name: name.trim() || slug.trim() }),
+        body: JSON.stringify({ slug: s, name: name.trim() || s }),
       })
       if (res.ok) {
-        router.push(`/c/${slug.trim().toLowerCase()}`)
+        router.push(`/c/${s}`)
       } else {
         const data = await res.json().catch(() => ({}))
-        setError(data.error || `Failed (${res.status})`)
+        setCreateError(data.error || `Failed (${res.status})`)
       }
     } catch {
-      setError('Network error')
+      setCreateError('Network error')
     } finally {
       setCreating(false)
     }
   }
 
-  async function deleteChannel(channelSlug: string) {
-    await fetch(`/api/channels/${channelSlug}`, { method: 'DELETE' })
-    fetchChannels()
-  }
+  const slugValid = SLUG_RE.test(slug.trim().toLowerCase())
 
-  const slugValid = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug.trim().toLowerCase())
+  const commands: Command[] = [
+    ...(channels ?? []).map<Command>(ch => ({
+      id: `channel:${ch.slug}`,
+      label: ch.name,
+      hint: ch.slug,
+      group: 'Channels',
+      action: () => router.push(`/c/${ch.slug}`),
+    })),
+    {
+      id: 'create-channel',
+      label: 'Create channel',
+      hint: 'Focus the create form',
+      group: 'Actions',
+      action: () => {
+        const el = document.getElementById('slug-input')
+        el?.focus()
+      },
+    },
+  ]
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <header className="h-14 border-b border-[var(--card-border)] bg-[var(--card)] flex items-center px-6 gap-4 shrink-0">
-        <div className="w-2 h-2 rounded-full bg-[var(--accent)]" />
-        <span className="text-sm font-semibold tracking-tight">Webhook Tester</span>
-        <span className="text-xs text-[var(--muted)]">Select or create a channel to start testing</span>
-      </header>
+    <div className="min-h-screen flex flex-col bg-[var(--surface)]">
+      <WorkspaceHeader onOpenCommand={() => setPaletteOpen(true)} />
 
-      <div className="flex-1 flex items-start justify-center p-8">
-        <div className="w-full max-w-2xl space-y-8">
-          {/* Create channel */}
-          <div className="rounded-lg border border-[var(--card-border)] bg-[var(--card)] p-6">
-            <h2 className="text-base font-semibold mb-4">Create Channel</h2>
-            <p className="text-xs text-[var(--muted)] mb-4">
-              Each channel is an isolated workspace with its own webhook endpoint, behavior config, and history.
-            </p>
-            <form onSubmit={createChannel} className="flex gap-3">
-              <div className="flex-1">
+      <main className="flex-1 px-6 py-7 max-w-7xl w-full mx-auto space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-[var(--heading)] tracking-tight">Workspace</h1>
+          <p className="text-sm text-[var(--muted)] mt-0.5">Channels, traffic, and recent activity at a glance.</p>
+        </div>
+
+        <StatsStrip />
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div className="lg:col-span-2 space-y-4">
+            <div
+              className="bg-white rounded-lg border border-[var(--card-border)] p-4"
+              style={{ boxShadow: 'var(--shadow-sm)' }}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-[var(--heading)]">Create a channel</h2>
+                <span className="text-[10px] text-[var(--muted)]">Slug must be lowercase, 3–40 chars</span>
+              </div>
+              <form onSubmit={createChannel} className="flex gap-2">
                 <input
-                  type="text"
+                  id="slug-input"
                   value={slug}
-                  onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                  placeholder="channel-slug (e.g. ahmed, sprint-42)"
-                  className="w-full bg-[var(--background)] border border-[var(--card-border)] rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-[var(--accent)]"
+                  onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                  placeholder="channel-slug"
+                  className="flex-1 px-3 py-2 text-sm font-mono border border-[var(--card-border)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 focus:border-[var(--accent)]"
                 />
-              </div>
-              <div className="flex-1">
                 <input
-                  type="text"
                   value={name}
-                  onChange={e => setName(e.target.value)}
+                  onChange={(e) => setName(e.target.value)}
                   placeholder="Display name (optional)"
-                  className="w-full bg-[var(--background)] border border-[var(--card-border)] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent)]"
+                  className="flex-1 px-3 py-2 text-sm border border-[var(--card-border)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 focus:border-[var(--accent)]"
                 />
+                <button
+                  type="submit"
+                  disabled={creating || !slugValid}
+                  className="px-5 py-2 text-sm font-medium rounded-md bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)] disabled:opacity-50"
+                >
+                  {creating ? 'Creating…' : 'Create'}
+                </button>
+              </form>
+              {slug && !slugValid && (
+                <div className="mt-2 text-[11px] text-[var(--warning-text)]">
+                  Slug must be 3–40 chars, lowercase letters/numbers/hyphens, no leading/trailing hyphen.
+                </div>
+              )}
+              {createError && (
+                <div className="mt-2 text-[11px] text-[var(--error-text)] bg-[var(--error-soft)] border border-[var(--error-border)] rounded p-2">
+                  {createError}
+                </div>
+              )}
+            </div>
+
+            {channels === null ? (
+              <div className="text-sm text-[var(--muted)] px-1">Loading channels…</div>
+            ) : channels.length === 0 ? (
+              <WorkspaceEmptyState />
+            ) : (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-sm font-semibold text-[var(--heading)]">
+                    Channels <span className="text-[var(--muted)] font-normal">({channels.length})</span>
+                  </h2>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {channels.map(ch => (
+                    <ChannelCard key={ch.id} channel={ch} />
+                  ))}
+                </div>
               </div>
-              <button
-                type="submit"
-                disabled={creating || !slugValid}
-                className="px-5 py-2 rounded-lg text-sm font-medium bg-[var(--accent)] text-white hover:bg-[var(--accent)]/80 transition-colors disabled:opacity-50 shrink-0"
-              >
-                {creating ? 'Creating...' : 'Create'}
-              </button>
-            </form>
-            {slug && !slugValid && (
-              <div className="text-[var(--warning)] text-[10px] mt-2">3-40 chars, lowercase letters, numbers, hyphens only</div>
-            )}
-            {error && (
-              <div className="text-[var(--error)] text-xs mt-2">{error}</div>
             )}
           </div>
 
-          {/* Channel list */}
-          <div>
-            <h2 className="text-base font-semibold mb-4">
-              Active Channels
-              {!loading && <span className="text-[var(--muted)] font-normal ml-2 text-xs">({channels.length})</span>}
-            </h2>
-
-            {loading ? (
-              <div className="text-[var(--muted)] text-sm">Loading...</div>
-            ) : channels.length === 0 ? (
-              <div className="text-center text-[var(--muted)] text-sm py-12 rounded-lg border border-dashed border-[var(--card-border)]">
-                No channels yet. Create one above to get started.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {channels.map(ch => (
-                  <div
-                    key={ch.id}
-                    className="rounded-lg border border-[var(--card-border)] bg-[var(--card)] p-4 flex items-center gap-4 hover:border-[var(--muted)]/40 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-sm">{ch.name}</span>
-                        <code className="text-[10px] text-[var(--muted)] font-mono bg-[var(--background)] px-1.5 py-0.5 rounded">{ch.slug}</code>
-                      </div>
-                      <div className="text-[10px] text-[var(--muted)] font-mono truncate">
-                        /api/webhook/{ch.slug}
-                      </div>
-                    </div>
-                    <div className="flex gap-2 shrink-0">
-                      <button
-                        onClick={() => router.push(`/c/${ch.slug}`)}
-                        className="px-4 py-1.5 rounded text-xs font-medium bg-[var(--accent)] text-white hover:bg-[var(--accent)]/80 transition-colors"
-                      >
-                        Open
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div className="lg:col-span-1">
+            <ActivityFeed />
           </div>
         </div>
-      </div>
+      </main>
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
     </div>
   )
 }

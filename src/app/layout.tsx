@@ -1,8 +1,6 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
+import { Toaster } from '@/components/toaster'
 import './globals.css'
-
-const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Webhook Tester',
@@ -20,9 +18,11 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${inter.className} antialiased min-h-screen`}>
-        {children}
+    <html lang="en">
+      <body className="antialiased min-h-screen">
+        <Toaster>
+          {children}
+        </Toaster>
       </body>
     </html>
   )

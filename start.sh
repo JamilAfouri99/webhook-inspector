@@ -88,7 +88,7 @@ fi
 # Migrations
 echo "  Running migrations..."
 source .env 2>/dev/null || true
-DATABASE_URL="${DATABASE_URL:-postgres://webhook:webhook_local@localhost:5433/webhook_tester}" npx prisma db push --skip-generate 2>&1 | grep -v "^$" | sed 's/^/  /'
+DATABASE_URL="${DATABASE_URL:-postgres://webhook:webhook_local@localhost:5433/webhook_tester}" npx prisma db push 2>&1 | grep -v "^$" | sed 's/^/  /'
 
 # Kill existing
 EXISTING=$(lsof -ti:$PORT 2>/dev/null || true)

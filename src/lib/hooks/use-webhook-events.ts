@@ -13,6 +13,8 @@ export type StateData = {
   useSequence: boolean
   sequence?: { behavior: string; delayMs?: number; statusCode?: number }[]
   sequencePosition?: string
+  forwardUrl?: string | null
+  forwardEnabled?: boolean
   channel?: { slug: string; name: string }
 }
 
