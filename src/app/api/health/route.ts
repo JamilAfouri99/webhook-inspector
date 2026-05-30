@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { getUptimeMs } from '@/lib/webhook-state'
+
+const startedAt = Date.now()
 
 export async function GET() {
-  return NextResponse.json({ status: 'ok', uptimeMs: getUptimeMs() })
+  return NextResponse.json({ status: 'ok', uptimeMs: Date.now() - startedAt })
 }

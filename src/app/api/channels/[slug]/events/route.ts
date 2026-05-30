@@ -1,38 +1,49 @@
-import { NextRequest } from 'next/server'
-import { addListener, getChannel } from '@/lib/webhook-state'
+import { route, requireChannel } from '@/lib/api/handler'
+import { addListener } from '@/lib/channel-events'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params
-  const channel = await getChannel(slug)
-  if (!channel) {
-    return new Response(JSON.stringify({ error: 'Channel not found' }), { status: 404 })
-  }
+const HEARTBEAT_MS = 15_000
+
+export const GET = route<{ slug: string }>(async (request, { slug }) => {
+  await requireChannel(slug)
 
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder()
+      let closed = false
 
-      function send(event: string, data: unknown) {
-        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
-      }
-
-      send('connected', { channel: slug })
-
-      const heartbeat = setInterval(() => {
-        try { controller.enqueue(encoder.encode(': heartbeat\n\n')) } catch { clearInterval(heartbeat) }
-      }, 15000)
-
-      const removeListener = addListener(slug, (event, data) => {
-        try { send(event, data) } catch { /* client disconnected */ }
-      })
-
-      // Cleanup on close
-      request.signal.addEventListener('abort', () => {
+      function teardown() {
+        if (closed) return
+        closed = true
         clearInterval(heartbeat)
         removeListener()
-      })
+      }
+
+      function send(event: string, data: unknown) {
+        if (closed) return
+        try {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+        } catch {
+          // Client went away mid-write — stop listening so we don't leak.
+          teardown()
+        }
+      }
+
+      const heartbeat = setInterval(() => {
+        if (closed) return
+        try {
+          controller.enqueue(encoder.encode(': heartbeat\n\n'))
+        } catch {
+          teardown()
+        }
+      }, HEARTBEAT_MS)
+
+      const removeListener = addListener(slug, (event, data) => send(event, data))
+
+      request.signal.addEventListener('abort', teardown)
+
+      send('connected', { channel: slug })
     },
   })
 
@@ -43,4 +54,4 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       'Connection': 'keep-alive',
     },
   })
-}
+})

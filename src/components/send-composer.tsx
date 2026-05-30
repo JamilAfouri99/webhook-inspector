@@ -132,13 +132,13 @@ export function SendComposer({ channelSlug, sidebarCollapsed, inspectorCollapsed
 
   return (
     <div
-      className="fixed bottom-5 right-5 z-40 w-[640px] max-w-[calc(100vw-2.5rem)] bg-white border border-[var(--card-border)] rounded-xl overflow-hidden flex flex-col"
+      className="fixed bottom-5 right-5 z-40 w-[640px] max-w-[calc(100vw-2.5rem)] bg-[var(--card)] border border-[var(--card-border)] rounded-xl overflow-hidden flex flex-col"
       style={{ boxShadow: 'var(--shadow-md)', maxHeight: 'calc(100vh - 2.5rem)' }}
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--card-border)] bg-[var(--muted-soft)]">
         <h3 className="text-sm font-semibold text-[var(--heading)]">Send Test Webhook</h3>
         <div className="flex items-center gap-2">
-          <div className="inline-flex bg-white border border-[var(--card-border)] rounded-md p-0.5">
+          <div className="inline-flex bg-[var(--card)] border border-[var(--card-border)] rounded-md p-0.5">
             <button
               onClick={() => setMode('quick')}
               className={`text-[11px] px-2.5 py-1 rounded transition-colors ${mode === 'quick' ? 'bg-[var(--accent-soft)] text-[var(--accent)]' : 'text-[var(--muted)] hover:text-[var(--heading)]'}`}
@@ -172,8 +172,8 @@ export function SendComposer({ channelSlug, sidebarCollapsed, inspectorCollapsed
                 }}
                 className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
                   activeProvider === group.provider
-                    ? 'bg-white text-[var(--heading)] font-medium border-r-2 border-[var(--accent)]'
-                    : 'text-[var(--muted)] hover:bg-white hover:text-[var(--heading)]'
+                    ? 'bg-[var(--card)] text-[var(--heading)] font-medium border-r-2 border-[var(--accent)]'
+                    : 'text-[var(--muted)] hover:bg-[var(--card)] hover:text-[var(--heading)]'
                 }`}
               >
                 {group.label}
@@ -191,7 +191,7 @@ export function SendComposer({ channelSlug, sidebarCollapsed, inspectorCollapsed
                 <select
                   value={quickEvent.value}
                   onChange={(e) => setQuickEvent(QUICK_EVENTS.find(ev => ev.value === e.target.value) ?? QUICK_EVENTS[0])}
-                  className="w-full px-3 py-2 text-sm border border-[var(--card-border)] rounded-md bg-white text-[var(--heading)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 focus:border-[var(--accent)]"
+                  className="w-full px-3 py-2 text-sm border border-[var(--card-border)] rounded-md bg-[var(--card)] text-[var(--heading)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 focus:border-[var(--accent)]"
                 >
                   {QUICK_EVENTS.map(e => (
                     <option key={e.value} value={e.value}>{e.label} — {e.value}</option>
@@ -204,7 +204,7 @@ export function SendComposer({ channelSlug, sidebarCollapsed, inspectorCollapsed
                 <select
                   value={activeSampleId}
                   onChange={(e) => setActiveSampleId(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-[var(--card-border)] rounded-md bg-white text-[var(--heading)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 focus:border-[var(--accent)]"
+                  className="w-full px-3 py-2 text-sm border border-[var(--card-border)] rounded-md bg-[var(--card)] text-[var(--heading)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 focus:border-[var(--accent)]"
                 >
                   {(groupedProviders.find(g => g.provider === activeProvider)?.samples ?? []).map(s => (
                     <option key={s.id} value={s.id}>{s.event}</option>

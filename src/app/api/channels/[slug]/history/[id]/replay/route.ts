@@ -1,54 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { getHistoryEntry, getChannel } from '@/lib/webhook-state'
+import { NextResponse } from 'next/server'
+import { getHistoryEntry } from '@/lib/webhook-state'
+import { route, requireChannel, readJsonBodyOptional, HttpError } from '@/lib/api/handler'
+import { parseTargetUrl } from '@/lib/api/validation'
+import { buildForwardHeaders } from '@/lib/forwarding'
 
 export const maxDuration = 60
 
-const HOP_BY_HOP = new Set([
-  'host', 'connection', 'content-length', 'keep-alive',
-  'transfer-encoding', 'upgrade', 'proxy-connection', 'te', 'trailer',
-])
-
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ slug: string; id: string }> },
-) {
-  const { slug, id } = await params
-
-  const channel = await getChannel(slug)
-  if (!channel) {
-    return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
-  }
+export const POST = route<{ slug: string; id: string }>(async (request, { slug, id }) => {
+  await requireChannel(slug)
 
   const recorded = await getHistoryEntry(slug, id)
-  if (!recorded) {
-    return NextResponse.json({ error: 'Webhook not found' }, { status: 404 })
-  }
+  if (!recorded) throw new HttpError(404, 'Webhook not found')
 
-  let targetUrl: string | undefined
-  try {
-    const body = await request.json()
-    if (body && typeof body.targetUrl === 'string') {
-      targetUrl = body.targetUrl
-    }
-  } catch {
-    // body is optional
-  }
+  const body = await readJsonBodyOptional(request)
+  const targetField = body && typeof body === 'object' ? (body as Record<string, unknown>).targetUrl : undefined
+  const destination = parseTargetUrl(targetField, 'targetUrl') ?? `${request.nextUrl.origin}/api/webhook/${slug}`
 
-  const destination = targetUrl ?? `${request.nextUrl.origin}/api/webhook/${slug}`
-
-  const forwardHeaders: Record<string, string> = {}
-  for (const [key, value] of Object.entries(recorded.headers)) {
-    if (HOP_BY_HOP.has(key.toLowerCase())) continue
-    if (Array.isArray(value)) {
-      forwardHeaders[key] = value.join(', ')
-    } else if (typeof value === 'string') {
-      forwardHeaders[key] = value
-    }
-  }
-  if (!forwardHeaders['content-type']) {
-    forwardHeaders['content-type'] = 'application/json'
-  }
-
+  const headers = buildForwardHeaders(recorded.headers)
   const payload = recorded.body == null ? undefined : JSON.stringify(recorded.body)
 
   const startMs = Date.now()
@@ -59,7 +27,7 @@ export async function POST(
   try {
     const res = await fetch(destination, {
       method: recorded.method || 'POST',
-      headers: forwardHeaders,
+      headers,
       body: payload,
       redirect: 'manual',
     })
@@ -74,13 +42,11 @@ export async function POST(
     error = (e as Error).message
   }
 
-  const responseTimeMs = Date.now() - startMs
-
   return NextResponse.json({
     replayedTo: destination,
     status,
     responseBody,
-    responseTimeMs,
+    responseTimeMs: Date.now() - startMs,
     error,
   })
-}
+})

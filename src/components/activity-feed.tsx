@@ -3,47 +3,44 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { relativeTime } from '@/lib/format'
-
-type Activity = {
-  id: string
-  receivedAt: string
-  event: string | null
-  eventId: string | null
-  statusCode: number
-  behavior: string
-  channel: { slug: string; name: string }
-}
-
-function pillFor(code: number): string {
-  if (code === 0) return 'bg-[#f3e8ff] text-[#6a2790] border-[#e8d5fa]'
-  if (code >= 200 && code < 300) return 'bg-[#cdf2e0] text-[#0e6245] border-[#b6e8c8]'
-  if (code >= 400 && code < 500) return 'bg-[#ffe5d2] text-[#983705] border-[#fac4a4]'
-  return 'bg-[#fde2e7] text-[#a41c4e] border-[#fac5cf]'
-}
+import { statusPillClass } from '@/lib/status'
+import { useActivity } from '@/lib/hooks/use-api'
+import { ActivityFeedSkeleton } from './activity-feed-skeleton'
 
 export function ActivityFeed() {
-  const [items, setItems] = useState<Activity[] | null>(null)
   const router = useRouter()
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null)
+  // Stamp the fetch time from SWR's success callback (not render, not an effect).
+  const { data, isLoading, isValidating, mutate } = useActivity(30, () => setLastUpdatedAt(Date.now()))
+  const items = data?.items ?? []
+  const [, force] = useState(0)
 
   useEffect(() => {
-    const load = () => fetch('/api/activity?limit=30').then(r => r.json()).then(d => setItems(d.items || [])).catch(() => {})
-    load()
-    const id = setInterval(load, 5_000)
+    const id = setInterval(() => force(n => n + 1), 5_000)
     return () => clearInterval(id)
   }, [])
 
+  if (isLoading && items.length === 0) return <ActivityFeedSkeleton />
+
   return (
     <div
-      className="bg-white rounded-lg border border-[var(--card-border)] overflow-hidden"
+      className="bg-[var(--card)] rounded-lg border border-[var(--card-border)] overflow-hidden"
       style={{ boxShadow: 'var(--shadow-sm)' }}
     >
       <div className="px-4 py-3 border-b border-[var(--card-border)] flex items-center justify-between">
         <h3 className="text-sm font-semibold text-[var(--heading)]">Recent activity</h3>
-        <span className="text-[10px] text-[var(--muted)]">Across all channels</span>
+        <button
+          onClick={() => mutate()}
+          className="flex items-center gap-1.5 text-[10px] text-[var(--muted)] hover:text-[var(--heading)] transition-colors"
+          title="Refresh"
+        >
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${isValidating ? 'bg-[var(--accent)] animate-pulse-dot' : 'bg-[var(--success)]'}`}
+          />
+          {isValidating ? 'updating…' : lastUpdatedAt ? `updated ${relativeTime(new Date(lastUpdatedAt).toISOString())}` : 'live'}
+        </button>
       </div>
-      {items === null ? (
-        <div className="px-4 py-6 text-xs text-[var(--muted)]">Loading…</div>
-      ) : items.length === 0 ? (
+      {items.length === 0 ? (
         <div className="px-4 py-10 text-center text-xs text-[var(--muted)]">
           No webhooks received yet across any channel.
         </div>
@@ -55,7 +52,7 @@ export function ActivityFeed() {
               onClick={() => router.push(`/c/${item.channel.slug}?event=${item.id}`)}
               className="px-4 py-2.5 flex items-center gap-3 text-xs hover:bg-[var(--muted-soft)] cursor-pointer transition-colors"
             >
-              <span className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border ${pillFor(item.statusCode)}`}>
+              <span className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border ${statusPillClass(item.statusCode)}`}>
                 {item.statusCode === 0 ? 'HANG' : item.statusCode}
               </span>
               <span className="font-medium text-[var(--heading)] truncate flex-1 min-w-0">

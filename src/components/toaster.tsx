@@ -60,7 +60,7 @@ function ToastView({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
 
   return (
     <div
-      className={`pointer-events-auto rounded-lg border bg-white px-3.5 py-2.5 min-w-[260px] max-w-[420px] flex items-start gap-2.5 transition-all duration-200 ${
+      className={`pointer-events-auto rounded-lg border bg-[var(--card)] px-3.5 py-2.5 min-w-[260px] max-w-[420px] flex items-start gap-2.5 transition-all duration-200 ${
         entering ? 'opacity-0 translate-y-1' : 'opacity-100 translate-y-0'
       }`}
       style={{ boxShadow: 'var(--shadow-md)', borderColor: palette.border }}

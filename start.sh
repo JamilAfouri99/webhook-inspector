@@ -101,4 +101,4 @@ echo "  http://localhost:$PORT"
 echo "  Webhook URL: http://localhost:$PORT/api/webhook/{slug}"
 echo ""
 
-DATABASE_URL="${DATABASE_URL:-postgres://webhook:webhook_local@localhost:5433/webhook_tester}" PORT=$PORT npx next dev -p "$PORT"
+DATABASE_URL="${DATABASE_URL:-postgres://webhook:webhook_local@localhost:5433/webhook_tester}" PORT=$PORT npx next dev --webpack -p "$PORT"

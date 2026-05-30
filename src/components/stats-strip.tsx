@@ -1,24 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { formatLatency, formatPercent, kFormat } from '@/lib/format'
-
-type Stats = {
-  channels: number
-  events24h: number
-  successRate: number | null
-  failed24h: number
-  avgDelayMs: number
-}
+import { useStats } from '@/lib/hooks/use-api'
+import { StatsStripSkeleton } from './stats-strip-skeleton'
 
 export function StatsStrip() {
-  const [stats, setStats] = useState<Stats | null>(null)
-  useEffect(() => {
-    const load = () => fetch('/api/stats').then(r => r.json()).then(setStats).catch(() => {})
-    load()
-    const id = setInterval(load, 15_000)
-    return () => clearInterval(id)
-  }, [])
+  const { data: stats, isLoading } = useStats()
+
+  if (isLoading && !stats) return <StatsStripSkeleton />
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -42,7 +31,7 @@ function Card({
 
   return (
     <div
-      className="bg-white rounded-lg border border-[var(--card-border)] p-4"
+      className="bg-[var(--card)] rounded-lg border border-[var(--card-border)] p-4"
       style={{ boxShadow: 'var(--shadow-sm)' }}
     >
       <div className="text-[10px] uppercase tracking-wider font-semibold text-[var(--muted)] mb-1">{label}</div>

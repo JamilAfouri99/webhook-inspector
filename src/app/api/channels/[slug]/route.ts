@@ -1,32 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { getChannel, deleteChannel, getState } from '@/lib/webhook-state'
+import { NextResponse } from 'next/server'
+import { deleteChannel, getState } from '@/lib/webhook-state'
+import { route, requireChannel, jsonError } from '@/lib/api/handler'
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> }
-) {
-  const { slug } = await params
+type Params = { slug: string }
 
-  const channel = await getChannel(slug)
-  if (!channel) {
-    return NextResponse.json({ error: `Channel "${slug}" not found` }, { status: 404 })
-  }
-
+export const GET = route<Params>(async (_request, { slug }) => {
+  const channel = await requireChannel(slug)
   const state = await getState(slug)
-
   return NextResponse.json({ ...channel, state })
-}
+})
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> }
-) {
-  const { slug } = await params
-
-  const deleted = await deleteChannel(slug)
-  if (!deleted) {
-    return NextResponse.json({ error: `Channel "${slug}" not found` }, { status: 404 })
-  }
-
+export const DELETE = route<Params>(async (_request, { slug }) => {
+  // deleteChannel returns false when the channel does not exist and notifies
+  // SSE clients on success.
+  if (!(await deleteChannel(slug))) return jsonError('Channel not found', 404)
   return NextResponse.json({ deleted: true })
-}
+})

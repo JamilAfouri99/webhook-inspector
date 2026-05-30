@@ -1,9 +1,11 @@
 'use client'
 
 import { useEffect, useState, use, useMemo, useCallback, useRef } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { Group, Panel, Separator, type PanelImperativeHandle } from 'react-resizable-panels'
 import { useWebhookEvents } from '@/lib/hooks/use-webhook-events'
+import { useChannels, STATUS_KEY } from '@/lib/hooks/use-api'
+import { useSWRConfig } from 'swr'
 import { useHotkeys } from '@/lib/hooks/use-hotkeys'
 import { TopBar } from '@/components/top-bar'
 import { Sidebar, SEQUENCE_PRESETS } from '@/components/sidebar'
@@ -12,10 +14,22 @@ import { EventInspector } from '@/components/event-inspector'
 import { SendComposer } from '@/components/send-composer'
 import { KpiStrip } from '@/components/kpi-strip'
 import { TimelineStrip } from '@/components/timeline-strip'
+import { EventStreamSkeleton } from '@/components/event-stream-skeleton'
+import { KpiStripSkeleton, TimelineStripSkeleton } from '@/components/kpi-strip-skeleton'
 import { CommandPalette, type Command } from '@/components/command-palette'
+import { ListeningHero } from '@/components/listening-hero'
+import { ShortcutsHelp, type Shortcut } from '@/components/shortcuts-help'
+import { useToast } from '@/components/toaster'
 import type { ReceivedWebhook } from '@/lib/webhook-state'
 
-type ChannelMeta = { id: string; slug: string; name: string }
+const CHANNEL_SHORTCUTS: Shortcut[] = [
+  { keys: ['⌘/Ctrl', 'K'], label: 'Open command palette' },
+  { keys: ['/'], label: 'Focus event search' },
+  { keys: ['['], label: 'Toggle sidebar' },
+  { keys: [']'], label: 'Toggle inspector' },
+  { keys: ['Esc'], label: 'Close inspector' },
+  { keys: ['?'], label: 'Show this help' },
+]
 
 const SIDEBAR_BEHAVIORS = [
   { value: 'success',           label: 'Success',         code: '200',   pill: 'bg-[#cdf2e0] text-[#0e6245] border-[#b6e8c8]' },
@@ -36,11 +50,14 @@ export default function ChannelDashboard({ params }: { params: Promise<{ slug: s
   const { slug } = use(params)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { webhooks, state, connected } = useWebhookEvents(slug)
+  const pathname = usePathname()
+  const { webhooks, state, connected, isInitialLoading } = useWebhookEvents(slug)
+  const { mutate } = useSWRConfig()
+  const { toast } = useToast()
   const [selectedWebhook, setSelectedWebhook] = useState<ReceivedWebhook | null>(null)
   const [webhookUrl, setWebhookUrl] = useState(`/api/webhook/${slug}`)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [allChannels, setAllChannels] = useState<ChannelMeta[]>([])
+  const [helpOpen, setHelpOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
 
@@ -51,9 +68,8 @@ export default function ChannelDashboard({ params }: { params: Promise<{ slug: s
     setWebhookUrl(`${window.location.origin}/api/webhook/${slug}`)
   }, [slug])
 
-  useEffect(() => {
-    fetch('/api/channels').then(r => r.json()).then(d => setAllChannels(d.channels || [])).catch(() => {})
-  }, [])
+  const channelsData = useChannels().data?.channels
+  const allChannels = useMemo(() => channelsData ?? [], [channelsData])
 
   useEffect(() => {
     const eventId = searchParams.get('event')
@@ -81,26 +97,29 @@ export default function ChannelDashboard({ params }: { params: Promise<{ slug: s
     }
   }, [webhooks, selectedWebhook])
 
-  function toggleSidebar() {
+  const toggleSidebar = useCallback(() => {
     const ref = sidebarRef.current
     if (!ref) return
     if (sidebarCollapsed) ref.expand()
     else ref.collapse()
-  }
+  }, [sidebarCollapsed])
 
-  function toggleInspector() {
+  const toggleInspector = useCallback(() => {
     const ref = inspectorRef.current
     if (!ref) return
     if (inspectorCollapsed) ref.expand()
     else ref.collapse()
-  }
+  }, [inspectorCollapsed])
 
-  function closeInspector() {
+  const closeInspector = useCallback(() => {
     setSelectedWebhook(null)
     const params = new URLSearchParams(searchParams.toString())
     params.delete('event')
-    router.replace(params.toString() ? `?${params.toString()}` : '', { scroll: false })
-  }
+    const qs = params.toString()
+    // Replace with the full pathname so an empty query actually clears `event`
+    // (router.replace('') is a no-op and would leave the param, reopening it).
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [router, pathname, searchParams])
 
   useHotkeys({
     'meta+k': (e) => { e.preventDefault(); setPaletteOpen(true) },
@@ -109,23 +128,42 @@ export default function ChannelDashboard({ params }: { params: Promise<{ slug: s
     'escape': () => { if (selectedWebhook) closeInspector() },
     '[': (e) => { e.preventDefault(); toggleSidebar() },
     ']': (e) => { e.preventDefault(); toggleInspector() },
+    'shift+?': (e) => { e.preventDefault(); setHelpOpen(true) },
   })
 
-  async function setBehavior(value: string, extra: Record<string, unknown> = {}) {
-    await fetch(`/api/channels/${slug}/behavior`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ behavior: value, ...extra }),
-    })
-  }
+  const postAndRevalidate = useCallback(
+    async (path: string, payload: unknown, failureTitle: string) => {
+      try {
+        const res = await fetch(path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        if (!res.ok) {
+          toast({ kind: 'error', title: `${failureTitle} (${res.status})` })
+          return
+        }
+        // SSE will broadcast the change too, but revalidating now makes the UI
+        // feel instant and keeps it correct if the SSE stream is disconnected.
+        mutate(STATUS_KEY(slug))
+      } catch {
+        toast({ kind: 'error', title: 'Network error' })
+      }
+    },
+    [slug, mutate, toast],
+  )
 
-  async function applySequencePreset(steps: Array<{ behavior: string; delayMs?: number; statusCode?: number }>, name: string) {
-    await fetch(`/api/channels/${slug}/sequence`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ steps, name }),
-    })
-  }
+  const setBehavior = useCallback(
+    (value: string, extra: Record<string, unknown> = {}) =>
+      postAndRevalidate(`/api/channels/${slug}/behavior`, { behavior: value, ...extra }, 'Failed to set behavior'),
+    [slug, postAndRevalidate],
+  )
+
+  const applySequencePreset = useCallback(
+    (steps: Array<{ behavior: string; delayMs?: number; statusCode?: number }>, name: string) =>
+      postAndRevalidate(`/api/channels/${slug}/sequence`, { steps, name }, 'Failed to apply sequence'),
+    [slug, postAndRevalidate],
+  )
 
   const commands: Command[] = useMemo(() => {
     const out: Command[] = []
@@ -160,13 +198,16 @@ export default function ChannelDashboard({ params }: { params: Promise<{ slug: s
     }
     out.push(
       { id: 'copy-url', label: 'Copy webhook URL', group: 'Actions', action: () => navigator.clipboard.writeText(webhookUrl) },
-      { id: 'reset',    label: 'Reset channel',     group: 'Actions', action: () => fetch(`/api/channels/${slug}/reset`, { method: 'POST' }) },
-      { id: 'clear',    label: 'Clear history',     group: 'Actions', action: () => fetch(`/api/channels/${slug}/history`, { method: 'DELETE' }) },
-      { id: 'toggle-sidebar', label: 'Toggle sidebar', hint: '[', group: 'View', action: toggleSidebar },
-      { id: 'toggle-inspector', label: 'Toggle inspector', hint: ']', group: 'View', action: toggleInspector },
+      // react-resizable-panels exposes collapse/expand only via its imperative
+      // panelRef handle (no controlled `collapsed` prop), so these toggles must
+      // read the ref. They run only on user action, never during render.
+      // eslint-disable-next-line react-hooks/refs
+      { id: 'toggle-sidebar', label: 'Toggle sidebar', hint: '[', group: 'View', action: () => toggleSidebar() },
+      // eslint-disable-next-line react-hooks/refs
+      { id: 'toggle-inspector', label: 'Toggle inspector', hint: ']', group: 'View', action: () => toggleInspector() },
     )
     return out
-  }, [allChannels, slug, webhookUrl, router, sidebarCollapsed, inspectorCollapsed])
+  }, [allChannels, slug, webhookUrl, router, setBehavior, applySequencePreset, toggleSidebar, toggleInspector])
 
   return (
     <div className="h-screen flex flex-col bg-[var(--surface)] overflow-hidden">
@@ -187,8 +228,8 @@ export default function ChannelDashboard({ params }: { params: Promise<{ slug: s
           <Panel
             id="sidebar"
             panelRef={sidebarRef}
-            defaultSize="22%"
-            minSize="16%"
+            defaultSize="26%"
+            minSize="20%"
             maxSize="36%"
             collapsible
             collapsedSize="0%"
@@ -202,25 +243,38 @@ export default function ChannelDashboard({ params }: { params: Promise<{ slug: s
               activeScenario={state?.activeScenario ?? 'none'}
               forwardUrl={state?.forwardUrl ?? null}
               forwardEnabled={state?.forwardEnabled ?? false}
+              signatureScheme={state?.signatureScheme ?? null}
             />
           </Panel>
 
-          {!sidebarCollapsed && <ResizeSeparator />}
+          <ResizeSeparator />
 
-          <Panel id="stream" defaultSize="46%" minSize="30%" className="overflow-hidden">
-            <div className="flex flex-col min-w-0 bg-white h-full">
-              <KpiStrip webhooks={webhooks} />
-              <TimelineStrip webhooks={webhooks} onSelect={selectAndPersist} />
-              <EventStream
-                webhooks={webhooks}
-                onSelect={selectAndPersist}
-                selectedId={selectedWebhook?.id}
-                channelSlug={slug}
-              />
+          <Panel id="stream" defaultSize="42%" minSize="30%" className="overflow-hidden">
+            <div className="flex flex-col min-w-0 bg-[var(--card)] h-full">
+              {isInitialLoading ? (
+                <>
+                  <KpiStripSkeleton />
+                  <TimelineStripSkeleton />
+                  <EventStreamSkeleton />
+                </>
+              ) : webhooks.length === 0 ? (
+                <ListeningHero webhookUrl={webhookUrl} connected={connected} />
+              ) : (
+                <>
+                  <KpiStrip webhooks={webhooks} />
+                  <TimelineStrip webhooks={webhooks} onSelect={selectAndPersist} />
+                  <EventStream
+                    webhooks={webhooks}
+                    onSelect={selectAndPersist}
+                    selectedId={selectedWebhook?.id}
+                    channelSlug={slug}
+                  />
+                </>
+              )}
             </div>
           </Panel>
 
-          {!inspectorCollapsed && <ResizeSeparator />}
+          <ResizeSeparator />
 
           <Panel
             id="inspector"
@@ -255,6 +309,7 @@ export default function ChannelDashboard({ params }: { params: Promise<{ slug: s
         commands={commands}
         placeholder="Search channels, behaviors, sequences, actions…"
       />
+      <ShortcutsHelp open={helpOpen} onClose={() => setHelpOpen(false)} shortcuts={CHANNEL_SHORTCUTS} />
     </div>
   )
 }
@@ -267,7 +322,7 @@ function ResizeSeparator() {
 
 function EmptyInspector() {
   return (
-    <aside className="h-full bg-white flex items-center justify-center text-[var(--muted)] text-sm">
+    <aside className="h-full bg-[var(--card)] flex items-center justify-center text-[var(--muted)] text-sm">
       <div className="text-center px-6">
         <div className="w-12 h-12 mx-auto rounded-full bg-[var(--muted-soft)] flex items-center justify-center mb-3">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

@@ -27,7 +27,7 @@ export function TimelineStrip({
 
   if (recent.length === 0) {
     return (
-      <div className="px-5 py-2 border-b border-[var(--card-border)] bg-white flex items-center gap-3">
+      <div className="px-5 py-2 border-b border-[var(--card-border)] bg-[var(--card)] flex items-center gap-3">
         <span className="text-[10px] uppercase tracking-wider font-semibold text-[var(--muted)]">Timeline</span>
         <div className="flex-1 h-5 rounded border border-dashed border-[var(--card-border)]" />
       </div>
@@ -35,7 +35,7 @@ export function TimelineStrip({
   }
 
   return (
-    <div className="px-5 py-2 border-b border-[var(--card-border)] bg-white flex items-center gap-3">
+    <div className="px-5 py-2 border-b border-[var(--card-border)] bg-[var(--card)] flex items-center gap-3">
       <span className="text-[10px] uppercase tracking-wider font-semibold text-[var(--muted)] shrink-0">
         Last {recent.length}
       </span>

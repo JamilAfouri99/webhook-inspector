@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useToast } from './toaster'
+import Link from 'next/link'
+import { useIsMac } from '@/lib/hooks/use-platform'
+import { ThemeToggle } from './theme-toggle'
+import { Logo } from './logo'
 
 type Props = {
   channelSlug: string
@@ -19,37 +21,10 @@ export function TopBar({
   channelSlug, channelName, connected, webhookCount, onOpenCommand,
   sidebarCollapsed, inspectorCollapsed, onToggleSidebar, onToggleInspector,
 }: Props) {
-  const [confirm, setConfirm] = useState<null | 'reset' | 'clear'>(null)
-  const [working, setWorking] = useState(false)
-  const [isMac, setIsMac] = useState(true)
-  const { toast } = useToast()
-
-  useEffect(() => {
-    setIsMac(navigator.platform.toUpperCase().includes('MAC'))
-  }, [])
-
-  async function exec() {
-    if (!confirm) return
-    setWorking(true)
-    try {
-      const res = confirm === 'reset'
-        ? await fetch(`/api/channels/${channelSlug}/reset`, { method: 'POST' })
-        : await fetch(`/api/channels/${channelSlug}/history`, { method: 'DELETE' })
-      if (res.ok) {
-        toast({ kind: 'success', title: confirm === 'reset' ? 'Channel reset' : 'History cleared' })
-      } else {
-        toast({ kind: 'error', title: `Failed (${res.status})` })
-      }
-    } catch {
-      toast({ kind: 'error', title: 'Network error' })
-    } finally {
-      setConfirm(null)
-      setWorking(false)
-    }
-  }
+  const isMac = useIsMac()
 
   return (
-    <header className="h-12 shrink-0 flex items-center px-3 gap-2 bg-white border-b border-[var(--card-border)]">
+    <header className="h-12 shrink-0 flex items-center px-3 gap-2 bg-[var(--card)] border-b border-[var(--card-border)]">
       {onToggleSidebar && (
         <PaneToggleButton
           collapsed={!!sidebarCollapsed}
@@ -59,10 +34,9 @@ export function TopBar({
         />
       )}
 
-      <a href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity ml-1">
-        <div className="w-2 h-2 rounded-full bg-[var(--accent)]" />
-        <span className="text-sm font-semibold text-[var(--heading)]">Webhook Tester</span>
-      </a>
+      <Link href="/" className="hover:opacity-80 transition-opacity ml-1">
+        <Logo mark="w-[18px] h-[18px]" />
+      </Link>
 
       <span className="text-[var(--muted)]">/</span>
 
@@ -85,10 +59,11 @@ export function TopBar({
       </div>
 
       <div className="ml-auto flex items-center gap-2 shrink-0">
+        <ThemeToggle />
         {onOpenCommand && (
           <button
             onClick={onOpenCommand}
-            className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-[var(--card-border)] bg-[var(--muted-soft)] text-[var(--muted)] hover:bg-white hover:border-[var(--card-border-strong)] transition-colors"
+            className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-[var(--card-border)] bg-[var(--muted-soft)] text-[var(--muted)] hover:bg-[var(--card)] hover:border-[var(--card-border-strong)] transition-colors"
             title="Command palette"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -97,18 +72,6 @@ export function TopBar({
             <kbd className="text-[10px] font-mono">{isMac ? '⌘K' : 'Ctrl+K'}</kbd>
           </button>
         )}
-        <button
-          onClick={() => setConfirm('reset')}
-          className="text-xs px-3 py-1.5 rounded-md border border-[var(--card-border)] bg-white text-[var(--heading)] hover:bg-[var(--muted-soft)] transition-colors"
-        >
-          Reset
-        </button>
-        <button
-          onClick={() => setConfirm('clear')}
-          className="text-xs px-3 py-1.5 rounded-md border border-[var(--card-border)] bg-white text-[var(--heading)] hover:bg-[var(--muted-soft)] transition-colors"
-        >
-          Clear history
-        </button>
         {onToggleInspector && (
           <PaneToggleButton
             collapsed={!!inspectorCollapsed}
@@ -118,41 +81,6 @@ export function TopBar({
           />
         )}
       </div>
-
-      {confirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setConfirm(null)}>
-          <div className="absolute inset-0 bg-black/30" />
-          <div
-            className="relative bg-white border border-[var(--card-border)] rounded-xl w-full max-w-sm mx-4 p-5"
-            style={{ boxShadow: 'var(--shadow-md)' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-base font-semibold text-[var(--heading)] mb-1.5">
-              {confirm === 'reset' ? 'Reset this channel?' : 'Clear all history?'}
-            </h3>
-            <p className="text-xs text-[var(--muted)] mb-4">
-              {confirm === 'reset'
-                ? 'Behavior, sequence, and history will be wiped. This cannot be undone.'
-                : 'All recorded webhooks will be deleted. Behavior config is preserved.'}
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setConfirm(null)}
-                className="text-xs px-4 py-2 rounded-md border border-[var(--card-border)] bg-white hover:bg-[var(--muted-soft)] text-[var(--heading)]"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={exec}
-                disabled={working}
-                className="text-xs px-4 py-2 rounded-md bg-[var(--error)] text-white hover:bg-[var(--error-text)] transition-colors disabled:opacity-50"
-              >
-                {working ? '...' : confirm === 'reset' ? 'Reset' : 'Clear'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </header>
   )
 }
