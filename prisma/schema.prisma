@@ -17,6 +17,8 @@ model Channel {
   sequence         Json      @default("[]")
   sequenceIndex    Int       @default(0) @map("sequence_index")
   publicKeyPem     String?   @map("public_key_pem") @db.Text
+  signatureScheme  String?   @map("signature_scheme") @db.VarChar(32)
+  signatureSecret  String?   @map("signature_secret") @db.Text
   activeScenario   String?   @default("none") @map("active_scenario") @db.VarChar(64)
   forwardUrl       String?   @map("forward_url") @db.Text
   forwardEnabled   Boolean   @default(false) @map("forward_enabled")

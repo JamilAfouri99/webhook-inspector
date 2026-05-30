@@ -1,27 +1,17 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Sparkline } from './sparkline'
 import { bucketByMinute } from '@/lib/sparkline'
 import { relativeTime, kFormat } from '@/lib/format'
+import { useChannelHistory, useChannelStatus } from '@/lib/hooks/use-api'
 
 type Channel = {
   id: string
   slug: string
   name: string
   createdAt: string
-}
-
-type ChannelDetail = {
-  state: {
-    behavior: string
-    webhooksReceived: number
-    activeScenario: string
-  } | null
-  recentTimestamps: number[]
-  lastEventAt: string | null
-  successRate: number | null
 }
 
 const BEHAVIOR_PILL: Record<string, string> = {
@@ -43,70 +33,51 @@ const BEHAVIOR_PILL: Record<string, string> = {
 
 export function ChannelCard({ channel }: { channel: Channel }) {
   const router = useRouter()
-  const [detail, setDetail] = useState<ChannelDetail | null>(null)
+  const { data: status } = useChannelStatus(channel.slug)
+  const { data: history } = useChannelHistory(channel.slug, 200)
+
   const [copied, setCopied] = useState(false)
-  const [webhookUrl, setWebhookUrl] = useState(`/api/webhook/${channel.slug}`)
 
-  useEffect(() => {
-    setWebhookUrl(`${window.location.origin}/api/webhook/${channel.slug}`)
-  }, [channel.slug])
-
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      try {
-        const [statusRes, historyRes] = await Promise.all([
-          fetch(`/api/channels/${channel.slug}/status`).then(r => r.json()),
-          fetch(`/api/channels/${channel.slug}/history?limit=200`).then(r => r.json()),
-        ])
-        if (cancelled) return
-        const webhooks = (historyRes.webhooks || []) as Array<{ receivedAtMs: number; respondedWith: { statusCode: number }; receivedAt: string }>
-        const last = webhooks.length > 0 ? webhooks[webhooks.length - 1] : null
-        const success = webhooks.filter(w => w.respondedWith.statusCode >= 200 && w.respondedWith.statusCode < 300).length
-        setDetail({
-          state: statusRes ? { behavior: statusRes.behavior, webhooksReceived: statusRes.webhooksReceived, activeScenario: statusRes.activeScenario } : null,
-          recentTimestamps: webhooks.map(w => w.receivedAtMs),
-          lastEventAt: last?.receivedAt ?? null,
-          successRate: webhooks.length === 0 ? null : success / webhooks.length,
-        })
-      } catch { /* swallow */ }
+  const { sparklinePoints, lastEventAt, totalEvents, behavior, scenario } = useMemo(() => {
+    const webhooks = history?.webhooks ?? []
+    const last = webhooks.length > 0 ? webhooks[webhooks.length - 1] : null
+    return {
+      sparklinePoints: bucketByMinute(webhooks.map(w => w.receivedAtMs), 30),
+      lastEventAt: last?.receivedAt ?? null,
+      totalEvents: status?.webhooksReceived ?? 0,
+      behavior: status?.behavior ?? 'success',
+      scenario: status?.activeScenario,
     }
-    load()
-    const id = setInterval(load, 10_000)
-    return () => { cancelled = true; clearInterval(id) }
-  }, [channel.slug])
+  }, [history, status])
 
-  const sparklinePoints = bucketByMinute(detail?.recentTimestamps ?? [], 30)
-  const totalEvents = detail?.state?.webhooksReceived ?? 0
-  const behavior = detail?.state?.behavior ?? 'success'
   const pill = BEHAVIOR_PILL[behavior] ?? BEHAVIOR_PILL['custom']
-  const scenario = detail?.state?.activeScenario
   const showsScenarioBadge = scenario && scenario !== 'none' && !scenario.startsWith('manual:')
+  const isInitialLoad = !status && !history
 
   function copy() {
-    navigator.clipboard.writeText(webhookUrl)
+    navigator.clipboard.writeText(`${window.location.origin}/api/webhook/${channel.slug}`)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
 
   return (
     <div
-      className="group bg-white rounded-lg border border-[var(--card-border)] p-4 hover:border-[var(--card-border-strong)] transition-colors cursor-pointer"
+      className="group bg-[var(--card)] rounded-lg border border-[var(--card-border)] p-4 hover:border-[var(--card-border-strong)] transition-colors cursor-pointer"
       style={{ boxShadow: 'var(--shadow-sm)' }}
       onClick={() => router.push(`/c/${channel.slug}`)}
     >
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="text-sm font-semibold text-[var(--heading)] truncate">{channel.name}</h3>
-            <code className="text-[10px] font-mono text-[var(--muted)] bg-[var(--muted-soft)] px-1.5 py-0.5 rounded">
-              {channel.slug}
-            </code>
-          </div>
+          <h3 className="text-sm font-semibold text-[var(--heading)] truncate">{channel.name}</h3>
+          <code className="block text-[11px] font-mono text-[var(--muted)] truncate mt-0.5 mb-2">{channel.slug}</code>
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border ${pill}`}>
-              {behavior}
-            </span>
+            {isInitialLoad ? (
+              <span className="inline-block h-4 w-16 rounded bg-[var(--muted-soft)] animate-pulse" />
+            ) : (
+              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border ${pill}`}>
+                {behavior}
+              </span>
+            )}
             {showsScenarioBadge && (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--accent)]/30">
                 {scenario}
@@ -120,12 +91,16 @@ export function ChannelCard({ channel }: { channel: Channel }) {
       <div className="flex items-end justify-between gap-3">
         <div className="flex gap-5 text-[11px] text-[var(--muted)]">
           <div>
-            <div className="text-base font-semibold text-[var(--heading)] leading-none">{kFormat(totalEvents)}</div>
+            <div className="text-base font-semibold text-[var(--heading)] leading-none">
+              {isInitialLoad ? <span className="inline-block h-4 w-8 rounded bg-[var(--muted-soft)] animate-pulse" /> : kFormat(totalEvents)}
+            </div>
             <div className="mt-0.5 text-[10px]">events</div>
           </div>
           <div>
             <div className="text-base font-semibold text-[var(--heading)] leading-none">
-              {detail?.lastEventAt ? relativeTime(detail.lastEventAt) : '—'}
+              {isInitialLoad
+                ? <span className="inline-block h-4 w-12 rounded bg-[var(--muted-soft)] animate-pulse" />
+                : (lastEventAt ? relativeTime(lastEventAt) : '—')}
             </div>
             <div className="mt-0.5 text-[10px]">last event</div>
           </div>
@@ -134,7 +109,7 @@ export function ChannelCard({ channel }: { channel: Channel }) {
         <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
           <button
             onClick={copy}
-            className="text-[11px] px-2.5 py-1 rounded-md border border-[var(--card-border)] bg-white hover:bg-[var(--muted-soft)] text-[var(--heading)]"
+            className="text-[11px] px-2.5 py-1 rounded-md border border-[var(--card-border)] bg-[var(--card)] hover:bg-[var(--muted-soft)] text-[var(--heading)]"
           >
             {copied ? 'Copied!' : 'Copy URL'}
           </button>

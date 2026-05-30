@@ -1,16 +1,12 @@
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/db'
+import { statusPillClass } from '@/lib/status'
+import { Logo } from '@/components/logo'
 
 function jsonPretty(v: unknown): string {
   if (v === undefined || v === null) return ''
   try { return JSON.stringify(v, null, 2) } catch { return String(v) }
-}
-
-function pillFor(code: number): string {
-  if (code === 0) return 'bg-[#f3e8ff] text-[#6a2790] border-[#e8d5fa]'
-  if (code >= 200 && code < 300) return 'bg-[#cdf2e0] text-[#0e6245] border-[#b6e8c8]'
-  if (code >= 400 && code < 500) return 'bg-[#ffe5d2] text-[#983705] border-[#fac4a4]'
-  return 'bg-[#fde2e7] text-[#a41c4e] border-[#fac5cf]'
 }
 
 export default async function SharePage({ params }: { params: Promise<{ id: string }> }) {
@@ -27,11 +23,10 @@ export default async function SharePage({ params }: { params: Promise<{ id: stri
 
   return (
     <div className="min-h-screen bg-[var(--surface)]">
-      <header className="h-12 bg-white border-b border-[var(--card-border)] flex items-center px-6 gap-3">
-        <a href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-          <div className="w-2 h-2 rounded-full bg-[var(--accent)]" />
-          <span className="text-sm font-semibold text-[var(--heading)]">Webhook Tester</span>
-        </a>
+      <header className="h-12 bg-[var(--card)] border-b border-[var(--card-border)] flex items-center px-6 gap-3">
+        <Link href="/" className="hover:opacity-80 transition-opacity">
+          <Logo mark="w-[18px] h-[18px]" />
+        </Link>
         <span className="text-[var(--muted)]">/</span>
         <span className="text-xs text-[var(--muted)]">Shared webhook</span>
         <span className="ml-auto text-[10px] text-[var(--muted)] font-mono">read-only</span>
@@ -41,12 +36,12 @@ export default async function SharePage({ params }: { params: Promise<{ id: stri
         <div>
           <div className="flex items-center gap-2 mb-1">
             <h1 className="text-xl font-semibold text-[var(--heading)]">{event}</h1>
-            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-mono font-semibold border ${pillFor(row.respondedStatusCode)}`}>
+            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-mono font-semibold border ${statusPillClass(row.respondedStatusCode)}`}>
               {row.respondedStatusCode === 0 ? 'HANG' : row.respondedStatusCode}
             </span>
           </div>
           <div className="text-xs text-[var(--muted)]">
-            Channel <a className="text-[var(--accent)] hover:underline" href={`/c/${row.channel.slug}`}>{row.channel.name}</a>
+            Channel <Link className="text-[var(--accent)] hover:underline" href={`/c/${row.channel.slug}`}>{row.channel.name}</Link>
             <span className="mx-2">·</span>
             <span className="font-mono">{eventId}</span>
             <span className="mx-2">·</span>
@@ -99,7 +94,7 @@ export default async function SharePage({ params }: { params: Promise<{ id: stri
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="bg-white rounded-lg border border-[var(--card-border)] overflow-hidden" style={{ boxShadow: 'var(--shadow-sm)' }}>
+    <section className="bg-[var(--card)] rounded-lg border border-[var(--card-border)] overflow-hidden" style={{ boxShadow: 'var(--shadow-sm)' }}>
       <div className="px-4 py-2.5 border-b border-[var(--card-border)]">
         <h2 className="text-[10px] uppercase tracking-wider font-semibold text-[var(--muted)]">{title}</h2>
       </div>

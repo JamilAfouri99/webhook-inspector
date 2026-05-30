@@ -50,6 +50,61 @@
     rgba(50, 50, 93, 0.1) 0px 7px 14px 0px,
     rgba(0, 0, 0, 0.07) 0px 3px 6px 0px;
   --shadow-focus: 0 0 0 3px rgba(84, 105, 212, 0.25);
+
+  color-scheme: light;
+}
+
+/* Dark theme — applied via `html.dark`. Structural tokens are re-pointed; the
+   light experience is untouched because every surface reads these tokens. */
+html.dark {
+  --background: #151a27;
+  --surface: #0e121c;
+  --foreground: #c4ccda;
+  --heading: #f3f5f9;
+
+  --card: #1a2030;
+  --card-border: #2a3142;
+  --card-border-strong: #3b4459;
+
+  --accent: #7c8cf8;
+  --accent-strong: #9aa7ff;
+  --accent-soft: #20273e;
+  --accent-dim: #313a5c;
+
+  --success: #2ecb8f;
+  --success-soft: #112a20;
+  --success-border: #1f4736;
+  --success-text: #5fe0a8;
+
+  --warning: #e0922f;
+  --warning-soft: #2a2310;
+  --warning-border: #4a3d1a;
+  --warning-text: #f3c25a;
+
+  --error: #f3577a;
+  --error-soft: #2c1822;
+  --error-border: #4d2433;
+  --error-text: #f78da3;
+
+  --info: #4f8fe0;
+  --info-soft: #112335;
+  --info-border: #1f3a52;
+  --info-text: #84b8f2;
+
+  --neutral-soft: #1f2636;
+  --neutral-border: #2e3648;
+
+  --muted: #8b95a8;
+  --muted-soft: #1d2434;
+
+  --shadow-sm:
+    rgba(0, 0, 0, 0.4) 0px 2px 5px 0px,
+    rgba(0, 0, 0, 0.3) 0px 1px 1px 0px;
+  --shadow-md:
+    rgba(0, 0, 0, 0.5) 0px 7px 14px 0px,
+    rgba(0, 0, 0, 0.35) 0px 3px 6px 0px;
+
+  color-scheme: dark;
 }
 
 body {
@@ -85,6 +140,12 @@ h1, h2, h3, h4, h5, h6 {
   background-clip: padding-box;
   border: 2px solid transparent;
 }
+html.dark ::-webkit-scrollbar-thumb {
+  background: #39435a;
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #4a566f;
+}
 
 /* Animations */
 @keyframes fadeIn {
@@ -103,4 +164,15 @@ h1, h2, h3, h4, h5, h6 {
 
 .animate-pulse-dot {
   animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* New event arriving in the stream: slide in with a brief accent highlight. */
+@keyframes eventIn {
+  0% { opacity: 0; transform: translateY(-4px); background-color: var(--accent-soft); }
+  60% { background-color: var(--accent-soft); }
+  100% { opacity: 1; transform: translateY(0); background-color: transparent; }
+}
+
+.animate-event-in {
+  animation: eventIn 0.9s ease-out;
 }

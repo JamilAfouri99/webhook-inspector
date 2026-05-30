@@ -1,15 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { resetAll, getState } from '@/lib/webhook-state'
+import { NextResponse } from 'next/server'
+import { resetAll } from '@/lib/webhook-state'
+import { route, requireChannel } from '@/lib/api/handler'
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params
-
-  const state = await getState(slug)
-  if (!state) {
-    return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
-  }
-
+export const POST = route<{ slug: string }>(async (_request, { slug }) => {
+  await requireChannel(slug)
   await resetAll(slug)
-
   return NextResponse.json({ reset: true })
-}
+})

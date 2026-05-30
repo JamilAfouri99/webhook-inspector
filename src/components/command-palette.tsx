@@ -39,11 +39,22 @@ export function CommandPalette({ open, onClose, commands, placeholder = 'Type a 
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (!open) return
-    setQuery('')
+  // Reset state when the palette opens, or when the query changes, by adjusting
+  // during render (React's documented alternative to a reset-in-effect).
+  const [prevOpen, setPrevOpen] = useState(open)
+  if (open !== prevOpen) {
+    setPrevOpen(open)
+    if (open) setQuery('')
     setSelectedIndex(0)
-    queueMicrotask(() => inputRef.current?.focus())
+  }
+  const [prevQuery, setPrevQuery] = useState(query)
+  if (query !== prevQuery) {
+    setPrevQuery(query)
+    setSelectedIndex(0)
+  }
+
+  useEffect(() => {
+    if (open) queueMicrotask(() => inputRef.current?.focus())
   }, [open])
 
   const filtered = useMemo(() => {
@@ -69,10 +80,6 @@ export function CommandPalette({ open, onClose, commands, placeholder = 'Type a 
     }
     return Array.from(groups.entries())
   }, [filtered])
-
-  useEffect(() => {
-    setSelectedIndex(0)
-  }, [query])
 
   useEffect(() => {
     if (!open) return
@@ -104,7 +111,7 @@ export function CommandPalette({ open, onClose, commands, placeholder = 'Type a 
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]" onClick={onClose}>
       <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" />
       <div
-        className="relative w-full max-w-xl mx-4 bg-white rounded-xl border border-[var(--card-border)] overflow-hidden"
+        className="relative w-full max-w-xl mx-4 bg-[var(--card)] rounded-xl border border-[var(--card-border)] overflow-hidden"
         style={{ boxShadow: 'var(--shadow-md)' }}
         onClick={(e) => e.stopPropagation()}
       >

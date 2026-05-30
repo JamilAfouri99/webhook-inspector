@@ -1,64 +1,49 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { getChannel, getHistoryEntry } from '@/lib/webhook-state'
+import { NextResponse } from 'next/server'
+import { getHistoryEntry } from '@/lib/webhook-state'
+import { route, requireChannel, readJsonBody, jsonError } from '@/lib/api/handler'
+import { asObject, parseTargetUrl } from '@/lib/api/validation'
+import { buildForwardHeaders } from '@/lib/forwarding'
 
 export const maxDuration = 120
 
-const HOP_BY_HOP = new Set([
-  'host', 'connection', 'content-length', 'keep-alive',
-  'transfer-encoding', 'upgrade', 'proxy-connection', 'te', 'trailer',
-])
+const MAX_BULK = 100
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params
+async function replayOne(slug: string, id: unknown, targetUrl: string) {
+  if (typeof id !== 'string') return { id: String(id), ok: false, error: 'invalid id' }
 
-  const channel = await getChannel(slug)
-  if (!channel) return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
+  const recorded = await getHistoryEntry(slug, id)
+  if (!recorded) return { id, ok: false, error: 'not found' }
 
-  let body: { ids?: unknown; targetUrl?: unknown }
+  const headers = buildForwardHeaders(recorded.headers)
+  const startMs = Date.now()
   try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+    const res = await fetch(targetUrl, {
+      method: recorded.method || 'POST',
+      headers,
+      body: recorded.body == null ? undefined : JSON.stringify(recorded.body),
+      redirect: 'manual',
+    })
+    return { id, ok: res.status >= 200 && res.status < 300, status: res.status, durationMs: Date.now() - startMs }
+  } catch (e) {
+    return { id, ok: false, error: (e as Error).message }
   }
+}
 
-  const ids = body.ids
+export const POST = route<{ slug: string }>(async (request, { slug }) => {
+  await requireChannel(slug)
+  const body = asObject(await readJsonBody(request))
+
+  const { ids } = body
   if (!Array.isArray(ids) || ids.length === 0) {
-    return NextResponse.json({ error: 'ids must be a non-empty array' }, { status: 400 })
+    return jsonError('ids must be a non-empty array', 400)
   }
-  if (ids.length > 100) {
-    return NextResponse.json({ error: 'Cannot replay more than 100 webhooks at once' }, { status: 400 })
+  if (ids.length > MAX_BULK) {
+    return jsonError(`Cannot replay more than ${MAX_BULK} webhooks at once`, 400)
   }
 
-  const targetUrl = typeof body.targetUrl === 'string' && body.targetUrl.length > 0
-    ? body.targetUrl
-    : `${request.nextUrl.origin}/api/webhook/${slug}`
+  const targetUrl = parseTargetUrl(body.targetUrl, 'targetUrl') ?? `${request.nextUrl.origin}/api/webhook/${slug}`
 
-  const results = await Promise.all(ids.map(async (id) => {
-    if (typeof id !== 'string') return { id: String(id), ok: false, error: 'invalid id' }
-    const recorded = await getHistoryEntry(slug, id)
-    if (!recorded) return { id, ok: false, error: 'not found' }
-
-    const forwardHeaders: Record<string, string> = {}
-    for (const [key, value] of Object.entries(recorded.headers)) {
-      if (HOP_BY_HOP.has(key.toLowerCase())) continue
-      if (Array.isArray(value)) forwardHeaders[key] = value.join(', ')
-      else if (typeof value === 'string') forwardHeaders[key] = value
-    }
-    if (!forwardHeaders['content-type']) forwardHeaders['content-type'] = 'application/json'
-
-    const startMs = Date.now()
-    try {
-      const res = await fetch(targetUrl, {
-        method: recorded.method || 'POST',
-        headers: forwardHeaders,
-        body: recorded.body == null ? undefined : JSON.stringify(recorded.body),
-        redirect: 'manual',
-      })
-      return { id, ok: res.status >= 200 && res.status < 300, status: res.status, durationMs: Date.now() - startMs }
-    } catch (e) {
-      return { id, ok: false, error: (e as Error).message }
-    }
-  }))
+  const results = await Promise.all(ids.map((id) => replayOne(slug, id, targetUrl)))
 
   return NextResponse.json({
     replayedTo: targetUrl,
@@ -67,4 +52,4 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     failed: results.filter((r) => !r.ok).length,
     results,
   })
-}
+})

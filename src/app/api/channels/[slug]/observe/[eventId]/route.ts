@@ -1,26 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { getHistory, analyzeDeliveries, getState, getChannel } from '@/lib/webhook-state'
+import { NextResponse } from 'next/server'
+import { getHistory, getState } from '@/lib/webhook-state'
+import { analyzeDeliveries, bodyEventId } from '@/domain/delivery-analysis'
+import { route, requireChannel, HttpError } from '@/lib/api/handler'
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ slug: string; eventId: string }> }
-) {
-  const { slug, eventId } = await params
-  const channel = await getChannel(slug)
-  if (!channel) return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
+export const GET = route<{ slug: string; eventId: string }>(async (_request, { slug, eventId }) => {
+  await requireChannel(slug)
 
-  const [result, state] = await Promise.all([
-    getHistory(slug),
-    getState(slug),
-  ])
-
-  const matching = result.webhooks.filter(w => w.body?.eventId === eventId)
+  const [result, state] = await Promise.all([getHistory(slug), getState(slug)])
+  const matching = result.webhooks.filter((w) => bodyEventId(w.body) === eventId)
   if (matching.length === 0) {
-    return NextResponse.json({ error: `No webhooks found for eventId: ${eventId}` }, { status: 404 })
+    throw new HttpError(404, `No webhooks found for eventId: ${eventId}`)
   }
 
-  const activeScenario = state?.activeScenario ?? 'none'
-  const { deliveries } = analyzeDeliveries(matching, activeScenario)
-
+  const { deliveries } = analyzeDeliveries(matching, state?.activeScenario ?? 'none')
   return NextResponse.json(deliveries[0])
-}
+})

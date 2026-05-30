@@ -1,7 +1,7 @@
 export function WorkspaceEmptyState() {
   return (
     <div
-      className="bg-white rounded-lg border border-dashed border-[var(--card-border-strong)] p-10 text-center"
+      className="bg-[var(--card)] rounded-lg border border-dashed border-[var(--card-border-strong)] p-10 text-center"
       style={{ boxShadow: 'var(--shadow-sm)' }}
     >
       <div className="w-16 h-16 mx-auto rounded-full bg-[var(--accent-soft)] flex items-center justify-center mb-4">

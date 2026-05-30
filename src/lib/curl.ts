@@ -20,8 +20,12 @@ export function toCurl(opts: {
     for (const [key, value] of Object.entries(opts.headers)) {
       if (SKIP_HEADERS.has(key.toLowerCase())) continue
       if (value === undefined) continue
-      const v = Array.isArray(value) ? value.join(', ') : value
-      parts.push(`  -H '${escapeSingleQuotes(key)}: ${escapeSingleQuotes(v)}'`)
+      // Multi-value headers (e.g. Set-Cookie) must be emitted as one -H each,
+      // not comma-joined, to match the wire representation curl produces.
+      const values = Array.isArray(value) ? value : [value]
+      for (const v of values) {
+        parts.push(`  -H '${escapeSingleQuotes(key)}: ${escapeSingleQuotes(v)}'`)
+      }
     }
   }
 

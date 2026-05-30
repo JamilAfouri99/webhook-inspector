@@ -1,12 +1,20 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ReceivedWebhook } from '@/lib/webhook-state'
+import { bodyEventId } from '@/domain/delivery-analysis'
 import { formatLatency, formatPercent, kFormat } from '@/lib/format'
 
 export function KpiStrip({ webhooks }: { webhooks: ReceivedWebhook[] }) {
+  // `now` drives the rolling time windows; ticking it keeps them current
+  // without reading an impure clock during render.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 10_000)
+    return () => clearInterval(id)
+  }, [])
+
   const stats = useMemo(() => {
-    const now = Date.now()
     const last1m = webhooks.filter(w => now - w.receivedAtMs <= 60_000).length
     const last5m = webhooks.filter(w => now - w.receivedAtMs <= 5 * 60_000).length
 
@@ -19,19 +27,17 @@ export function KpiStrip({ webhooks }: { webhooks: ReceivedWebhook[] }) {
 
     const byEventId = new Map<string, number>()
     for (const w of webhooks) {
-      const eid = (w.body && typeof w.body === 'object' && 'eventId' in w.body)
-        ? String((w.body as Record<string, unknown>).eventId ?? '')
-        : ''
+      const eid = bodyEventId(w.body)
       if (!eid) continue
-      byEventId.set(eid, (byEventId.get(eid) || 0) + 1)
+      byEventId.set(eid, (byEventId.get(eid) ?? 0) + 1)
     }
     const retries = Array.from(byEventId.values()).reduce((acc, n) => acc + Math.max(n - 1, 0), 0)
 
     return { last1m, last5m, successRate, avgDelay, retries, total: webhooks.length }
-  }, [webhooks])
+  }, [webhooks, now])
 
   return (
-    <div className="px-5 py-3 border-b border-[var(--card-border)] bg-white grid grid-cols-2 sm:grid-cols-4 gap-4">
+    <div className="px-5 py-3 border-b border-[var(--card-border)] bg-[var(--card)] grid grid-cols-2 sm:grid-cols-4 gap-4">
       <Tile label="Events / min" value={kFormat(stats.last1m)} hint={`${stats.last5m} in last 5m`} />
       <Tile
         label="Success rate"

@@ -1,16 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { getHistoryEntry, getChannel } from '@/lib/webhook-state'
+import { NextResponse } from 'next/server'
+import { getHistoryEntry } from '@/lib/webhook-state'
+import { route, requireChannel, HttpError } from '@/lib/api/handler'
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ slug: string; id: string }> }
-) {
-  const { slug, id } = await params
-  const channel = await getChannel(slug)
-  if (!channel) return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
-
+export const GET = route<{ slug: string; id: string }>(async (_request, { slug, id }) => {
+  await requireChannel(slug)
   const wh = await getHistoryEntry(slug, id)
-  if (!wh) return NextResponse.json({ error: `Webhook ${id} not found` }, { status: 404 })
-
+  if (!wh) throw new HttpError(404, `Webhook ${id} not found`)
   return NextResponse.json(wh)
-}
+})
